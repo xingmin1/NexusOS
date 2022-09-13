@@ -1,3 +1,4 @@
 src/kxos-user/hello_world/hello_world filter=lfs diff=lfs merge=lfs -text
 src/kxos-user/fork/fork filter=lfs diff=lfs merge=lfs -text
+src/kxos-user/hello_c/hello filter=lfs diff=lfs merge=lfs -text
 * !text !filter !merge !diff

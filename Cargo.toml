@@ -3,11 +3,15 @@ name = "jinux"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "jinux"
+path = "kernel/main.rs"
+
 [dependencies]
 limine = "0.1.10"
 jinux-frame = { path = "framework/jinux-frame" }
 jinux-std = { path = "services/libs/jinux-std" }
-component = { path = "services/comp-sys/component" }
+component = { path = "services/libs/comp-sys/component" }
 
 [dev-dependencies]
 x86_64 = "0.14.2"
@@ -33,4 +37,4 @@ members = [
     "services/libs/cpio-decoder",
 ]
 
-exclude = ["services/comp-sys/controlled", "services/comp-sys/cargo-component"]
+exclude = ["services/libs/comp-sys/controlled", "services/libs/comp-sys/cargo-component"]

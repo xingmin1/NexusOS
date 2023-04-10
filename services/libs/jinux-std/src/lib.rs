@@ -79,7 +79,7 @@ fn init_thread() {
 }
 
 fn read_ramdisk_content() -> &'static [u8] {
-    include_bytes!("../../../../ramdisk/build/ramdisk.cpio")
+    include_bytes!("../../../../regression/ramdisk/build/ramdisk.cpio")
 }
 
 /// first process never return

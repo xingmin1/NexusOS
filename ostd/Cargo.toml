@@ -67,6 +67,9 @@ sbi-spec = "0.0.7"
 fdt = { version = "0.1.5", features = ["pretty-printing"] }
 crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
 
+[target.loongarch64-unknown-none.dependencies]
+loongArch64 = "0.2.4"
+
 [features]
 # default = ["zicbom"]
 # # The guest OS support for Confidential VMs (CVMs), e.g., Intel TDX

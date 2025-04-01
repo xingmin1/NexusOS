@@ -1,5 +1,5 @@
 {
-    "rust-analyzer.cargo.target": "x86_64-unknown-none",
+    "rust-analyzer.cargo.target": "riscv64gc-unknown-none-elf",
     "rust-analyzer.check.extraEnv": {
         "RUSTFLAGS": "--check-cfg cfg(ktest) --cfg ktest"
     },
@@ -11,7 +11,7 @@
         "--manifest-path",
         "kernel/Cargo.toml",
         "--target",
-        "x86_64-unknown-none",
+        "riscv64gc-unknown-none-elf",
         "-Zbuild-std=core,alloc,compiler_builtins",
         "-Zbuild-std-features=compiler-builtins-mem"
     ],

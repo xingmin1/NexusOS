@@ -18,11 +18,11 @@ pub struct PageProperty {
 
 impl PageProperty {
     /// Creates a new `PageProperty` with the given flags and cache policy for the user.
-    pub fn new(flags: PageFlags, cache: CachePolicy) -> Self {
+    pub fn new(flags: PageFlags, cache: CachePolicy, priv_flags: PrivilegedPageFlags) -> Self {
         Self {
             flags,
             cache,
-            priv_flags: PrivilegedPageFlags::USER,
+            priv_flags,
         }
     }
     /// Creates a page property that implies an invalid page without mappings.
@@ -125,7 +125,10 @@ bitflags! {
 
 bitflags! {
     /// Page property that are only accessible in OSTD.
-    pub(crate) struct PrivilegedPageFlags: u8 {
+    pub struct PrivilegedPageFlags: u8 {
+        /// Accessible from kernel mode.
+        #[cfg(target_arch = "riscv64")]
+        const KERNEL    = 0b00000000;
         /// Accessible from user mode.
         const USER      = 0b00000001;
         /// Global page that won't be evicted from TLB with normal TLB flush.

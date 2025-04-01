@@ -111,7 +111,7 @@ fn create_vm_space(program: &[u8]) -> (usize, VmSpace) {
         let page_prop = PageProperty::new(
             page_flags,
             CachePolicy::Writeback,
-            // PrivilegedPageFlags::USER,
+            PrivilegedPageFlags::USER,
         );
 
         // 计算段在文件中的偏移和大小

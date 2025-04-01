@@ -93,3 +93,16 @@ qemu.args = """\
     -device virtio-serial-device \
     -device virtconsole,chardev=mux \
 """
+
+[scheme."oscomp-riscv"]
+boot.method = "qemu-direct"
+build.strip_elf = false
+
+qemu.args = """\
+-machine virt \
+-m 1G \
+-nographic \
+-smp 1 \
+-no-reboot \
+-rtc base=utc \
+"""

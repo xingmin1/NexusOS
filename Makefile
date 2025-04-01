@@ -3,19 +3,19 @@
 # =========================== Makefile options. ===============================
 
 # Global build options.
-ARCH ?= x86_64
+ARCH ?= riscv64
 BENCHMARK ?= none
 BOOT_METHOD ?= grub-rescue-iso
 BOOT_PROTOCOL ?= multiboot2
 BUILD_SYSCALL_TEST ?= 0
-ENABLE_KVM ?= 1
+ENABLE_KVM ?= 0
 INTEL_TDX ?= 0
-MEM ?= 8G
+MEM ?= 1G
 OVMF ?= on
 RELEASE ?= 0
 RELEASE_LTO ?= 0
 LOG_LEVEL ?= error
-SCHEME ?= ""
+SCHEME ?= "oscomp-riscv"
 SMP ?= 1
 OSTD_TASK_STACK_SIZE_IN_PAGES ?= 64
 # End of global build options.
@@ -130,16 +130,8 @@ NON_OSDK_CRATES := \
 	ostd/libs/linux-bzimage/boot-params \
 	ostd/libs/ostd-macros \
 	ostd/libs/ostd-test \
-	kernel/libs/cpio-decoder \
-	kernel/libs/int-to-c-enum \
-	kernel/libs/int-to-c-enum/derive \
-	kernel/libs/aster-rights \
-	kernel/libs/aster-rights-proc \
-	kernel/libs/jhash \
-	kernel/libs/keyable-arc \
-	kernel/libs/typeflags \
-	kernel/libs/typeflags-util \
-	kernel/libs/atomic-integer-wrapper
+	ostd/libs/int-to-c-enum \
+	ostd/libs/int-to-c-enum/derive
 
 # In contrast, OSDK crates depend on OSTD (or being `ostd` itself)
 # and need to be built or tested with OSDK.
@@ -147,19 +139,7 @@ OSDK_CRATES := \
 	osdk/test-kernel \
 	ostd \
 	ostd/libs/linux-bzimage/setup \
-	kernel \
-	kernel/comps/block \
-	kernel/comps/console \
-	kernel/comps/framebuffer \
-	kernel/comps/input \
-	kernel/comps/network \
-	kernel/comps/softirq \
-	kernel/comps/logger \
-	kernel/comps/mlsdisk \
-	kernel/comps/time \
-	kernel/comps/virtio \
-	kernel/libs/aster-util \
-	kernel/libs/aster-bigtcp
+	kernel
 
 # OSDK dependencies
 OSDK_SRC_FILES := \

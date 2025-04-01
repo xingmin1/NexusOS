@@ -1,86 +1,76 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! The page table cursor for mapping and querying over the page table.
+//! 用于在页表上进行映射和查询的页表游标。
 //!
-//! ## The page table lock protocol
+//! ## 页表锁协议
 //!
-//! We provide a fine-grained lock protocol to allow concurrent accesses to
-//! the page table. The protocol is originally proposed by Ruihan Li
-//! <lrh2000@pku.edu.cn>.
+//! 我们提供了一种细粒度的锁协议，允许对页表进行并发访问。该协议最初由
+//! Ruihan Li <lrh2000@pku.edu.cn> 提出。
 //!
-//! [`CursorMut::new`] accepts an address range, which indicates the page table
-//! entries that may be visited by this cursor.
+//! [`CursorMut::new`] 接受一个地址范围，表示此游标可能访问的页表项。
 //!
-//! Then, [`CursorMut::new`] finds an intermediate page table (not necessarily
-//! the last-level or the top-level) which represents an address range that contains
-//! the whole specified address range. It requires all locks from the root page
-//! table to the intermediate page table, but then unlocks all locks excluding the
-//! one for the intermediate page table. CursorMut then maintains the lock
-//! guards from one for the intermediate page table to the leaf that the cursor is
-//! currently manipulating.
+//! 然后，[`CursorMut::new`] 会找到一个中间页表（不一定是最后级或顶级），
+//! 该页表代表的地址范围包含整个指定的地址范围。它会从根页表到中间页表获取所有锁，
+//! 但随后会释放除中间页表锁之外的所有锁。CursorMut 然后维护从中间页表到游标
+//! 当前操作的叶节点的锁保护。
 //!
-//! For example, if we're going to map the address range shown below:
+//! 例如，如果我们要映射下面显示的地址范围：
 //!
 //! ```plain
-//! Top-level page table node             A
-//!                                      /
-//!                                     B
-//!                                    / \
-//! Last-level page table nodes       C   D
-//! Last-level PTEs               ---**...**---
-//!                                  \__ __/
-//!                                     V
-//!                  Address range that we're going to map
+//! 顶级页表节点                       A
+//!                                 /
+//!                                B
+//!                               / \
+//! 最后一级页表节点                C   D
+//! 最后一级页表项              ---**...**---
+//!                             \__ __/
+//!                                V
+//!                     我们要映射的地址范围
 //! ```
 //!
-//! When calling [`CursorMut::new`], it will:
-//!  1. `lock(A)`, `lock(B)`, `unlock(A)`;
-//!  2. `guards = [ locked(B) ]`.
+//! 当调用 [`CursorMut::new`] 时，它将：
+//!  1. `lock(A)`，`lock(B)`，`unlock(A)`；
+//!  2. `guards = [ locked(B) ]`。
 //!
-//! When calling [`CursorMut::map`], it will:
-//!  1. `lock(C)`, `guards = [ locked(B), locked(C) ]`;
-//!  2. Map some pages in `C`;
-//!  3. `unlock(C)`, `lock_guard = [ locked(B) ]`;
-//!  4. `lock(D)`, `lock_guard = [ locked(B), locked(D) ]`;
-//!  5. Map some pages in D;
-//!  6. `unlock(D)`, `lock_guard = [ locked(B) ]`;
+//! 当调用 [`CursorMut::map`] 时，它将：
+//!  1. `lock(C)`，`guards = [ locked(B), locked(C) ]`；
+//!  2. 在 `C` 中映射一些页面；
+//!  3. `unlock(C)`，`lock_guard = [ locked(B) ]`；
+//!  4. `lock(D)`，`lock_guard = [ locked(B), locked(D) ]`；
+//!  5. 在 D 中映射一些页面；
+//!  6. `unlock(D)`，`lock_guard = [ locked(B) ]`；
 //!
 //!
-//! ## Validity
+//! ## 有效性
 //!
-//! The page table cursor API will guarantee that the page table, as a data
-//! structure, whose occupied memory will not suffer from data races. This is
-//! ensured by the page table lock protocol. In other words, any operations
-//! provided by the APIs (as long as safety requirements are met) will not
-//! break the page table data structure (or other memory).
+//! 页表游标 API 将保证页表作为一个数据结构，其占用的内存不会遭受数据竞争。
+//! 这由页表锁协议保证。换句话说，API 提供的任何操作（只要满足安全要求）
+//! 都不会破坏页表数据结构（或其他内存）。
 //!
-//! However, the page table cursor creation APIs, [`CursorMut::new`] or
-//! [`Cursor::new`], do not guarantee exclusive access to the virtual address
-//! area you claim. From the lock protocol, you can see that there are chances
-//! to create 2 cursors that claim the same virtual address range (one covers
-//! another). In this case, the greater cursor may block if it wants to modify
-//! the page table entries covered by the smaller cursor. Also, if the greater
-//! cursor destructs the smaller cursor's parent page table node, it won't block
-//! and the smaller cursor's change will not be visible. The user of the page
-//! table cursor should add additional entry point checks to prevent these defined
-//! behaviors if they are not wanted.
+//! 然而，页表游标创建 API，[`CursorMut::new`] 或 [`Cursor::new`]，
+//! 不保证对您声明的虚拟地址区域的独占访问。从锁协议中可以看出，
+//! 有可能创建两个声明相同虚拟地址范围的游标（一个覆盖另一个）。
+//! 在这种情况下，如果较大的游标想要修改较小游标覆盖的页表项，它可能会被阻塞。
+//! 此外，如果较大的游标销毁了较小游标的父页表节点，它不会被阻塞，
+//! 且较小游标的更改将不可见。页表游标的用户应该添加额外的入口点检查，
+//! 以防止这些定义的行为（如果不需要的话）。
 
-use core::{
-    any::TypeId, marker::PhantomData, mem::ManuallyDrop, ops::Range, sync::atomic::Ordering,
-};
+use core::{any::TypeId, marker::PhantomData, mem::ManuallyDrop, ops::Range};
 
 use align_ext::AlignExt;
 
 use super::{
     page_size, pte_index, Child, Entry, KernelMode, MapTrackingStatus, PageTable,
     PageTableEntryTrait, PageTableError, PageTableMode, PageTableNode, PagingConstsTrait,
-    PagingLevel, RawPageTableNode, UserMode,
+    PagingLevel, UserMode,
 };
 use crate::{
     mm::{
-        frame::{meta::AnyFrameMeta, Frame},
+        frame::{Frame, MemoryType, Unknown},
         kspace::should_map_as_tracked,
-        paddr_to_vaddr, Paddr, PageProperty, Vaddr,
+        nr_subpage_per_huge,
+        page_prop::PageProperty,
+        Paddr, Vaddr,
     },
     task::{disable_preempt, DisabledPreemptGuard},
 };
@@ -93,7 +83,7 @@ pub enum PageTableItem {
     },
     Mapped {
         va: Vaddr,
-        page: Frame<dyn AnyFrameMeta>,
+        page: Frame<Unknown>,
         prop: PageProperty,
     },
     MappedUntracked {
@@ -104,59 +94,57 @@ pub enum PageTableItem {
     },
 }
 
-/// The cursor for traversal over the page table.
+/// 用于遍历页表的游标。
 ///
-/// A slot is a PTE at any levels, which correspond to a certain virtual
-/// memory range sized by the "page size" of the current level.
+/// 槽位是任何级别的页表项（PTE），对应于当前级别"页面大小"的特定虚拟内存范围。
 ///
-/// A cursor is able to move to the next slot, to read page properties,
-/// and even to jump to a virtual address directly. We use a guard stack to
-/// simulate the recursion, and adpot a page table locking protocol to
-/// provide concurrency.
+/// 游标能够移动到下一个槽位，读取页面属性，甚至直接跳转到虚拟地址。
+/// 我们使用保护栈模拟递归，并采用页表锁定协议提供并发性。
 #[derive(Debug)]
-pub struct Cursor<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> {
-    /// The lock guards of the cursor. The level 1 page table lock guard is at
-    /// index 0, and the level N page table lock guard is at index N - 1.
+pub struct Cursor<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait>
+where
+    [(); C::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<C>()]:,
+{
+    /// 游标的锁保护。1级页表锁保护在索引0处，N级页表锁保护在索引N-1处。
     ///
-    /// When destructing the cursor, the locks will be released in the order
-    /// from low to high, exactly the reverse order of the acquisition.
-    /// This behavior is ensured by the default drop implementation of Rust:
-    /// <https://doc.rust-lang.org/reference/destructors.html>.
-    guards: [Option<PageTableNode<E, C>>; MAX_NR_LEVELS],
-    /// The level of the page table that the cursor points to.
+    /// 销毁游标时，锁将按从低到高的顺序释放，与获取顺序完全相反。
+    /// 这种行为由Rust的默认drop实现保证：
+    /// <https://doc.rust-lang.org/reference/destructors.html>。
+    guards: [Option<PageTableNode<'a, E, C>>; C::NR_LEVELS as usize],
+    /// 游标指向的页表级别。
     level: PagingLevel,
-    /// From `guard_level` to `level`, the locks are held in `guards`.
+    /// 从`guard_level`到`level`，锁保存在`guards`中。
     guard_level: PagingLevel,
-    /// The current virtual address that the cursor points to.
+    /// 游标当前指向的虚拟地址。
     va: Vaddr,
-    /// The virtual address range that is locked.
+    /// 被锁定的虚拟地址范围。
     barrier_va: Range<Vaddr>,
     #[expect(dead_code)]
     preempt_guard: DisabledPreemptGuard,
-    _phantom: PhantomData<&'a PageTable<M, E, C>>,
+    // _phantom: PhantomData<&'a PageTable<M, E, C>>,
+    page_table: &'a PageTable<M, E, C>,
 }
 
-/// The maximum value of `PagingConstsTrait::NR_LEVELS`.
-const MAX_NR_LEVELS: usize = 4;
-
-impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<'a, M, E, C> {
-    /// Creates a cursor claiming the read access for the given range.
+impl<'a, Mode: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<'a, Mode, E, C>
+where
+    [(); C::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<C>()]:,
+{
+    /// 创建一个游标，声明对给定范围的读取访问权限。
     ///
-    /// The cursor created will only be able to query or jump within the given
-    /// range. Out-of-bound accesses will result in panics or errors as return values,
-    /// depending on the access method.
+    /// 创建的游标只能在给定范围内查询或跳转。超出范围的访问将导致
+    /// 恐慌或作为返回值的错误，这取决于访问方法。
     ///
-    /// Note that this function does not ensure exclusive access to the claimed
-    /// virtual address range. The accesses using this cursor may block or fail.
-    pub fn new(pt: &'a PageTable<M, E, C>, va: &Range<Vaddr>) -> Result<Self, PageTableError> {
-        if !M::covers(va) || va.is_empty() {
+    /// 注意，此函数不确保对声明的虚拟地址范围的独占访问。
+    /// 使用此游标的访问可能会被阻塞或失败。
+    pub fn new(pt: &'a PageTable<Mode, E, C>, va: &Range<Vaddr>) -> Result<Self, PageTableError> {
+        if !Mode::covers(va) || va.is_empty() {
             return Err(PageTableError::InvalidVaddrRange(va.start, va.end));
         }
         if va.start % C::BASE_PAGE_SIZE != 0 || va.end % C::BASE_PAGE_SIZE != 0 {
             return Err(PageTableError::UnalignedVaddr);
         }
-
-        const { assert!(C::NR_LEVELS as usize <= MAX_NR_LEVELS) };
 
         let mut cursor = Self {
             guards: core::array::from_fn(|_| None),
@@ -165,15 +153,19 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
             va: va.start,
             barrier_va: va.clone(),
             preempt_guard: disable_preempt(),
-            _phantom: PhantomData,
+            page_table: pt,
         };
 
-        let mut cur_pt_addr = pt.root.paddr();
+        // let mut cur_pt_addr = pt.root.paddr();
 
-        // Go down and get proper locks. The cursor should hold a lock of a
-        // page table node containing the virtual address range.
+        let child = &pt.root.get_child(pte_index::<C>(va.start, cursor.level));
+        cursor.level -= 1;
+
+        let raw;
+
+        // 向下获取适当的锁。游标应持有包含虚拟地址范围的页表节点的锁。
         //
-        // While going down, previous guards of too-high levels will be released.
+        // 在向下过程中，将释放过高级别的先前保护。
         loop {
             let start_idx = pte_index::<C>(va.start, cursor.level);
             let level_too_high = {
@@ -184,28 +176,36 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
                 break;
             }
 
-            let cur_pt_ptr = paddr_to_vaddr(cur_pt_addr) as *mut E;
-            // SAFETY:
-            // - The page table node is alive because (1) the root node is alive and (2) all child nodes cannot
-            //   be recycled if there are cursors.
-            // - The index is inside the bound, so the page table entry is valid.
-            // - All page table entries are aligned and accessed with atomic operations only.
-            let cur_pte = unsafe { super::load_pte(cur_pt_ptr.add(start_idx), Ordering::Acquire) };
-            if cur_pte.is_present() {
-                if cur_pte.is_last(cursor.level) {
-                    break;
-                } else {
-                    cur_pt_addr = cur_pte.paddr();
+            // let cur_pt_ptr = paddr_to_vaddr(cur_pt_addr) as *mut E;
+            // 安全性：
+            //
+            // 根页表的生命周期足够长，因此该指针及其索引均有效；
+            // 同时，在我们使用期间，子页表节点也不会被其他线程回收。
+            // let cur_pte = unsafe { cur_pt_ptr.add(start_idx).read() };
+            raw = match raw.get_child(start_idx) {
+                Child::PageTable(pt) => pt,
+                Child::None => break,
+                Child::Frame(_, _) => break,
+                Child::Untracked(_, _, _) => {
+                    panic!("尝试在未跟踪区域上映射跟踪页面");
                 }
-            } else {
-                break;
-            }
+            };
+            // if cur_pte.is_present() {
+            //     if cur_pte.is_last(cursor.level) {
+            //         break;
+            //     } else {
+            //         cur_pt_addr = cur_pte.paddr();
+            //     }
+            // } else {
+            //     break;
+            // }
             cursor.level -= 1;
         }
 
-        // SAFETY: The address and level corresponds to a child converted into
-        // a PTE and we clone it to get a new handle to the node.
-        let raw = unsafe { RawPageTableNode::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
+        // 安全性：
+        //
+        // 当前的地址和层级对应于已转换成页表项的子节点，我们通过浅克隆该节点获得一个新的句柄。
+        // let raw = unsafe { RawPageTableNode::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
         let _inc_ref = ManuallyDrop::new(raw.clone_shallow());
         let lock = raw.lock();
         cursor.guards[cursor.level as usize - 1] = Some(lock);
@@ -214,7 +214,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
         Ok(cursor)
     }
 
-    /// Gets the information of the current slot.
+    /// 获取当前槽位的映射信息。
     pub fn query(&mut self) -> Result<PageTableItem, PageTableError> {
         if self.va >= self.barrier_va.end {
             return Err(PageTableError::InvalidVaddr(self.va));
@@ -239,7 +239,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
                     return Ok(PageTableItem::Mapped { va, page, prop });
                 }
                 Child::Untracked(pa, plevel, prop) => {
-                    debug_assert_eq!(plevel, level);
+                    debug_assert_eq!(*plevel, level);
                     return Ok(PageTableItem::MappedUntracked {
                         va,
                         pa,
@@ -251,11 +251,10 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
         }
     }
 
-    /// Traverses forward in the current level to the next PTE.
+    /// 在当前层级中前进到下一个页表项。
     ///
-    /// If reached the end of a page table node, it leads itself up to the next page of the parent
-    /// page if possible.
-    pub(in crate::mm) fn move_forward(&mut self) {
+    /// 若当前页表节点已经到达末尾，则会尽可能上升到父页表的下一页。
+    pub(crate) fn move_forward(&mut self) {
         let page_size = page_size::<C>(self.level);
         let next_va = self.va.align_down(page_size) + page_size;
         while self.level < self.guard_level && pte_index::<C>(next_va, self.level) == 0 {
@@ -264,14 +263,15 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
         self.va = next_va;
     }
 
-    /// Jumps to the given virtual address.
-    /// If the target address is out of the range, this method will return `Err`.
+    /// 跳转到指定的虚拟地址。
+    /// 如果目标地址超出有效范围，则返回 `Err`。
     ///
-    /// # Panics
+    /// # Panic
     ///
-    /// This method panics if the address has bad alignment.
+    /// 当地址对齐不正确时，此方法会触发 panic。
     pub fn jump(&mut self, va: Vaddr) -> Result<(), PageTableError> {
-        assert!(va % C::BASE_PAGE_SIZE == 0);
+        assert_eq!(va % C::BASE_PAGE_SIZE, 0);
+
         if !self.barrier_va.contains(&va) {
             return Err(PageTableError::InvalidVaddr(va));
         }
@@ -279,14 +279,13 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
         loop {
             let cur_node_start = self.va & !(page_size::<C>(self.level + 1) - 1);
             let cur_node_end = cur_node_start + page_size::<C>(self.level + 1);
-            // If the address is within the current node, we can jump directly.
+            // 如果目标地址位于当前页表节点内，则可直接跳转。
             if cur_node_start <= va && va < cur_node_end {
                 self.va = va;
                 return Ok(());
             }
 
-            // There is a corner case that the cursor is depleted, sitting at the start of the
-            // next node but the next node is not locked because the parent is not locked.
+            // 特殊情况：游标已耗尽，停在下一节点的起始处，但由于父节点未被锁定，下一节点也未被锁定。
             if self.va >= self.barrier_va.end && self.level == self.guard_level {
                 self.va = va;
                 return Ok(());
@@ -301,37 +300,32 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
         self.va
     }
 
-    /// Goes up a level.
+    /// 上升一级。
     ///
-    /// This method releases the previously acquired lock at the discarded level.
+    /// 如果当前页没有任何映射（游标只会向前移动），则会释放该页；必要时，在游标销毁前会进行最后的清理。
+    ///
+    /// 注意：调用此方法前必须已经获得相应的锁，被丢弃的层级也会被同时解锁。
     fn pop_level(&mut self) {
-        debug_assert!(self.guards[self.level as usize - 1].is_some());
         self.guards[self.level as usize - 1] = None;
-
         self.level += 1;
 
-        // TODO: Drop the page table if it is empty (it may be necessary to
-        // rewalk from the top if all the locks have been released).
+        // TODO: 若页表节点变为空，则释放该页表。
     }
 
-    /// Goes down a level to a child page table.
-    ///
-    /// The lock on the child page table is held until the next [`Self::pop_level`]
-    /// call at the same level.
+    /// 下降一级，进入子页表。
     fn push_level(&mut self, child_pt: PageTableNode<E, C>) {
         self.level -= 1;
         debug_assert_eq!(self.level, child_pt.level());
-
         self.guards[self.level as usize - 1] = Some(child_pt);
     }
 
     fn should_map_as_tracked(&self) -> bool {
-        (TypeId::of::<M>() == TypeId::of::<KernelMode>()
-            || TypeId::of::<M>() == TypeId::of::<UserMode>())
+        (TypeId::of::<Mode>() == TypeId::of::<KernelMode>()
+            || TypeId::of::<Mode>() == TypeId::of::<UserMode>())
             && should_map_as_tracked(self.va)
     }
 
-    fn cur_entry(&mut self) -> Entry<'_, E, C> {
+    fn cur_entry(&mut self) -> Entry<'_, '_, E, C> {
         let node = self.guards[self.level as usize - 1].as_mut().unwrap();
         node.entry(pte_index::<C>(self.va, self.level))
     }
@@ -339,6 +333,9 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
 
 impl<M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Iterator
     for Cursor<'_, M, E, C>
+where
+    [(); C::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<C>()]:,
 {
     type Item = PageTableItem;
 
@@ -351,25 +348,28 @@ impl<M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Iterator
     }
 }
 
-/// The cursor of a page table that is capable of map, unmap or protect pages.
+/// 可进行映射、解除映射或保护操作的页表游标。
 ///
-/// Also, it has all the capabilities of a [`Cursor`]. A virtual address range
-/// in a page table can only be accessed by one cursor whether it is mutable or not.
+/// 此游标拥有 [`Cursor`] 的所有功能；在页表中，一个虚拟地址范围无论是否可变，都只能由一个游标访问。
 #[derive(Debug)]
 pub struct CursorMut<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait>(
     Cursor<'a, M, E, C>,
-);
+)
+where
+    [(); C::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<C>()]:;
 
-impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorMut<'a, M, E, C> {
-    /// Creates a cursor claiming the write access for the given range.
+impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorMut<'a, M, E, C>
+where
+    [(); C::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<C>()]:,
+{
+    /// 创建一个游标，声明对给定范围具有写权限。
     ///
-    /// The cursor created will only be able to map, query or jump within the given
-    /// range. Out-of-bound accesses will result in panics or errors as return values,
-    /// depending on the access method.
+    /// 该游标仅能在指定范围内执行映射、查询或跳转操作，超出范围的访问会返回错误或触发 panic，
+    /// 具体行为取决于所调用的方法。
     ///
-    /// Note that this function, the same as [`Cursor::new`], does not ensure exclusive
-    /// access to the claimed virtual address range. The accesses using this cursor may
-    /// block or fail.
+    /// 注意：此函数与 [`Cursor::new`] 相同，并不保证对所声明虚拟地址范围的独占访问，其操作可能会被阻塞或失败。
     pub(super) fn new(
         pt: &'a PageTable<M, E, C>,
         va: &Range<Vaddr>,
@@ -377,52 +377,50 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
         Cursor::new(pt, va).map(|inner| Self(inner))
     }
 
-    /// Jumps to the given virtual address.
+    /// 跳转到指定的虚拟地址。
     ///
-    /// This is the same as [`Cursor::jump`].
+    /// 此方法与 [`Cursor::jump`] 的行为一致。
     ///
-    /// # Panics
+    /// # Panic
     ///
-    /// This method panics if the address is out of the range where the cursor is required to operate,
-    /// or has bad alignment.
+    /// 如果目标地址超出游标操作的有效范围或地址对齐错误，将触发 panic。
     pub fn jump(&mut self, va: Vaddr) -> Result<(), PageTableError> {
         self.0.jump(va)
     }
 
-    /// Gets the current virtual address.
+    /// 获取当前的虚拟地址。
     pub fn virt_addr(&self) -> Vaddr {
         self.0.virt_addr()
     }
 
-    /// Gets the information of the current slot.
+    /// 获取当前槽位的映射信息。
     pub fn query(&mut self) -> Result<PageTableItem, PageTableError> {
         self.0.query()
     }
 
-    /// Maps the range starting from the current address to a [`Frame<dyn AnyFrameMeta>`].
+    /// 将从当前地址开始的一段区域映射到一个 [`Frame<dyn MemoryType>`] 上。
     ///
-    /// It returns the previously mapped [`Frame<dyn AnyFrameMeta>`] if that exists.
+    /// 如果该区域之前已有映射，则返回之前映射的 [`Frame<dyn MemoryType>`]。
     ///
-    /// # Panics
+    /// # Panic
     ///
-    /// This function will panic if
-    ///  - the virtual address range to be mapped is out of the range;
-    ///  - the alignment of the page is not satisfied by the virtual address;
-    ///  - it is already mapped to a huge page while the caller wants to map a smaller one.
+    /// 当发生下列情况之一时会触发 panic：
+    ///  - 待映射的虚拟地址范围超出有效范围；
+    ///  - 虚拟地址的对齐不满足页面要求；
+    ///  - 当前区域已映射为大页，而调用者期望映射为较小页面。
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// The caller should ensure that the virtual range being mapped does
-    /// not affect kernel's memory safety.
+    /// 调用者必须确保待映射的虚拟地址范围不会危害内核内存安全。
     pub unsafe fn map(
         &mut self,
-        page: Frame<dyn AnyFrameMeta>,
+        page: Frame<Unknown>,
         prop: PageProperty,
-    ) -> Option<Frame<dyn AnyFrameMeta>> {
+    ) -> Option<Frame<Unknown>> {
         let end = self.0.va + page.size();
         assert!(end <= self.0.barrier_va.end);
 
-        // Go down if not applicable.
+        // 若当前情况不适用于直接映射，则下降层级进行处理。
         while self.0.level > C::HIGHEST_TRANSLATION_LEVEL
             || self.0.va % page_size::<C>(self.0.level) != 0
             || self.0.va + page_size::<C>(self.0.level) > end
@@ -451,7 +449,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
         }
         debug_assert_eq!(self.0.level, page.level());
 
-        // Map the current page.
+        // 执行当前页的映射操作。
         let old = self.0.cur_entry().replace(Child::Frame(page, prop));
         self.0.move_forward();
 
@@ -465,12 +463,10 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
         }
     }
 
-    /// Maps the range starting from the current address to a physical address range.
+    /// 将从当前地址开始的一段区域映射到物理地址范围上。
     ///
-    /// The function will map as more huge pages as possible, and it will split
-    /// the huge pages into smaller pages if necessary. If the input range is
-    /// large, the resulting mappings may look like this (if very huge pages
-    /// supported):
+    /// 此函数会尽可能使用大页进行映射，并在必要时拆分大页成较小的页面。
+    /// 若输入范围较大，最终的映射可能如下（当支持极大页时）：
     ///
     /// ```text
     /// start                                                             end
@@ -479,28 +475,26 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
     ///    4KiB      2MiB                       1GiB              4KiB  4KiB
     /// ```
     ///
-    /// In practice it is not suggested to use this method for safety and conciseness.
+    /// 实际上，为了安全和代码简洁，不建议使用此方法。
     ///
-    /// # Panics
+    /// # Panic
     ///
-    /// This function will panic if
-    ///  - the virtual address range to be mapped is out of the range.
+    /// 如果待映射的虚拟地址范围超出有效范围，则触发 panic。
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// The caller should ensure that
-    ///  - the range being mapped does not affect kernel's memory safety;
-    ///  - the physical address to be mapped is valid and safe to use;
-    ///  - it is allowed to map untracked pages in this virtual address range.
+    /// 调用者必须确保：
+    ///  - 待映射的范围不会危害内核内存安全；
+    ///  - 待映射的物理地址有效且安全可用；
+    ///  - 当前虚拟地址范围允许映射未跟踪页面。
     pub unsafe fn map_pa(&mut self, pa: &Range<Paddr>, prop: PageProperty) {
         let end = self.0.va + pa.len();
         let mut pa = pa.start;
         assert!(end <= self.0.barrier_va.end);
 
         while self.0.va < end {
-            // We ensure not mapping in reserved kernel shared tables or releasing it.
-            // Although it may be an invariant for all architectures and will be optimized
-            // out by the compiler since `C::NR_LEVELS - 1 > C::HIGHEST_TRANSLATION_LEVEL`.
+            // 确保不在内核保留或共享的页表中进行映射或释放操作。
+            // 尽管对于所有架构而言这通常是不变的，并且会被编译器优化掉（因为 `C::NR_LEVELS - 1 > C::HIGHEST_TRANSLATION_LEVEL`）。
             let is_kernel_shared_node =
                 TypeId::of::<M>() == TypeId::of::<KernelMode>() && self.0.level >= C::NR_LEVELS - 1;
             if self.0.level > C::HIGHEST_TRANSLATION_LEVEL
@@ -524,7 +518,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                         self.0.push_level(pt);
                     }
                     Child::Frame(_, _) => {
-                        panic!("Mapping a smaller page in an already mapped huge page");
+                        panic!("在已映射大页上映射较小页面");
                     }
                     Child::Untracked(_, _, _) => {
                         let split_child = cur_entry.split_if_untracked_huge().unwrap();
@@ -534,7 +528,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                 continue;
             }
 
-            // Map the current page.
+            // 执行当前页的映射操作。
             debug_assert!(!self.0.should_map_as_tracked());
             let level = self.0.level;
             let _ = self
@@ -542,36 +536,28 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                 .cur_entry()
                 .replace(Child::Untracked(pa, level, prop));
 
-            // Move forward.
+            // 前进游标。
             pa += page_size::<C>(level);
             self.0.move_forward();
         }
     }
 
-    /// Find and remove the first page in the cursor's following range.
+    /// 在游标后续范围内寻找并移除第一个存在映射的页面。
     ///
-    /// The range to be found in is the current virtual address with the
-    /// provided length.
+    /// 查找范围以当前虚拟地址为起点，长度为指定值。
     ///
-    /// The function stops and yields the page if it has actually removed a
-    /// page, no matter if the following pages are also required to be unmapped.
-    /// The returned page is the virtual page that existed before the removal
-    /// but having just been unmapped.
+    /// 如果成功移除了一个页面（无论后续是否还有页面需要解除映射），则函数会停止并返回该页面
+    /// （返回的页面为解除映射前存在映射的页面）。
+    /// 同时，在成功移除页面后，游标将前进至该页面之后的下一页；若后续范围内没有映射，
+    /// 则游标停在范围末端并返回 [`PageTableItem::NotMapped`]。
     ///
-    /// It also makes the cursor moves forward to the next page after the
-    /// removed one, when an actual page is removed. If no mapped pages exist
-    /// in the following range, the cursor will stop at the end of the range
-    /// and return [`PageTableItem::NotMapped`].
+    /// # 安全性
     ///
-    /// # Safety
+    /// 调用者必须确保待解除映射的范围不会危害内核内存安全。
     ///
-    /// The caller should ensure that the range being unmapped does not affect
-    /// kernel's memory safety.
+    /// # Panic
     ///
-    /// # Panics
-    ///
-    /// This function will panic if the end range covers a part of a huge page
-    /// and the next page is that huge page.
+    /// 如果指定的范围末端覆盖了大页的一部分，而下一页正属于该大页，则会触发 panic。
     pub unsafe fn take_next(&mut self, len: usize) -> PageTableItem {
         let start = self.0.va;
         assert!(len % page_size::<C>(1) == 0);
@@ -583,7 +569,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
             let cur_level = self.0.level;
             let cur_entry = self.0.cur_entry();
 
-            // Skip if it is already absent.
+            // 如果当前页面已无映射，则跳过。
             if cur_entry.is_none() {
                 if self.0.va + page_size::<C>(self.0.level) > end {
                     self.0.va = end;
@@ -593,7 +579,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                 continue;
             }
 
-            // Go down if not applicable or if the entry points to a child page table.
+            // 如果当前条目为子页表节点，或该页面不满足对齐要求，或超出指定范围，则下降层级处理。
             if cur_entry.is_node()
                 || cur_va % page_size::<C>(cur_level) != 0
                 || cur_va + page_size::<C>(cur_level) > end
@@ -602,8 +588,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                 match child {
                     Child::PageTable(pt) => {
                         let pt = pt.lock();
-                        // If there's no mapped PTEs in the next level, we can
-                        // skip to save time.
+                        // 如果下一层存在映射，则下降层级以节省时间。
                         if pt.nr_children() != 0 {
                             self.0.push_level(pt);
                         } else {
@@ -615,10 +600,10 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                         }
                     }
                     Child::None => {
-                        unreachable!("Already checked");
+                        unreachable!("已检查空映射情况");
                     }
                     Child::Frame(_, _) => {
-                        panic!("Removing part of a huge page");
+                        panic!("尝试解除部分大页映射");
                     }
                     Child::Untracked(_, _, _) => {
                         let split_child = cur_entry.split_if_untracked_huge().unwrap();
@@ -628,7 +613,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                 continue;
             }
 
-            // Unmap the current page and return it.
+            // 解除当前页面的映射，并返回该页面。
             let old = cur_entry.replace(Child::None);
 
             self.0.move_forward();
@@ -643,43 +628,37 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                     debug_assert_eq!(level, self.0.level);
                     PageTableItem::MappedUntracked {
                         va: self.0.va,
-                        pa,
+                        pa: *pa,
                         len: page_size::<C>(level),
-                        prop,
+                        prop: *prop,
                     }
                 }
                 Child::PageTable(_) | Child::None => unreachable!(),
             };
         }
 
-        // If the loop exits, we did not find any mapped pages in the range.
+        // 如果循环结束，说明在该范围内未找到任何映射页面。
         PageTableItem::NotMapped { va: start, len }
     }
 
-    /// Applies the operation to the next slot of mapping within the range.
+    /// 对指定范围内下一个映射槽执行保护操作。
     ///
-    /// The range to be found in is the current virtual address with the
-    /// provided length.
+    /// 查找范围以当前虚拟地址为起点，长度为指定值。
     ///
-    /// The function stops and yields the actually protected range if it has
-    /// actually protected a page, no matter if the following pages are also
-    /// required to be protected.
+    /// 如果实际对某个页面执行了保护操作，则函数会停止并返回该页面受保护的地址范围，
+    /// 即使后续页面也需保护，也只返回此次保护的页面范围。
+    /// 同时，在实际保护后，游标会前进至该页面之后的下一页；若后续范围内没有映射，
+    /// 则游标停在范围末端并返回 [`None`]。
     ///
-    /// It also makes the cursor moves forward to the next page after the
-    /// protected one. If no mapped pages exist in the following range, the
-    /// cursor will stop at the end of the range and return [`None`].
+    /// # 安全性
     ///
-    /// # Safety
+    /// 调用者必须确保进行保护操作的地址范围不会危害内核内存安全。
     ///
-    /// The caller should ensure that the range being protected with the
-    /// operation does not affect kernel's memory safety.
+    /// # Panic
     ///
-    /// # Panics
-    ///
-    /// This function will panic if:
-    ///  - the range to be protected is out of the range where the cursor
-    ///    is required to operate;
-    ///  - the specified virtual address range only covers a part of a page.
+    /// 当下列情况发生时会触发 panic：
+    ///  - 待保护范围超出游标操作的有效范围；
+    ///  - 指定的虚拟地址范围仅覆盖了页面的一部分。
     pub unsafe fn protect_next(
         &mut self,
         len: usize,
@@ -693,20 +672,19 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
             let cur_level = self.0.level;
             let mut cur_entry = self.0.cur_entry();
 
-            // Skip if it is already absent.
+            // 如果当前页面没有映射，则跳过。
             if cur_entry.is_none() {
                 self.0.move_forward();
                 continue;
             }
 
-            // Go down if it's not a last entry.
+            // 如果当前条目为页表节点，则下降层级处理。
             if cur_entry.is_node() {
                 let Child::PageTable(pt) = cur_entry.to_owned() else {
-                    unreachable!("Already checked");
+                    unreachable!("已检查类型");
                 };
                 let pt = pt.lock();
-                // If there's no mapped PTEs in the next level, we can
-                // skip to save time.
+                // 如果下一层存在映射，则下降层级以节省时间；否则直接前进。
                 if pt.nr_children() != 0 {
                     self.0.push_level(pt);
                 } else {
@@ -715,17 +693,16 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                 continue;
             }
 
-            // Go down if the page size is too big and we are protecting part
-            // of untracked huge pages.
+            // 若当前页面过大且试图仅保护其部分内容，则下降层级将大页拆分为小页。
             if cur_va % page_size::<C>(cur_level) != 0 || cur_va + page_size::<C>(cur_level) > end {
                 let split_child = cur_entry
                     .split_if_untracked_huge()
-                    .expect("Protecting part of a huge page");
+                    .expect("尝试保护大页的一部分内容");
                 self.0.push_level(split_child);
                 continue;
             }
 
-            // Protect the current page.
+            // 对当前页面执行保护操作。
             cur_entry.protect(op);
 
             let protected_va = self.0.va..self.0.va + page_size::<C>(self.0.level);
@@ -737,33 +714,27 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
         None
     }
 
-    /// Copies the mapping from the given cursor to the current cursor.
+    /// 将给定游标中的映射复制到当前游标中。
     ///
-    /// All the mappings in the current cursor's range must be empty. The
-    /// function allows the source cursor to operate on the mapping before
-    /// the copy happens. So it is equivalent to protect then duplicate.
-    /// Only the mapping is copied, the mapped pages are not copied.
+    /// 当前游标所在范围必须没有任何映射。该函数允许源游标在复制前对映射进行操作，
+    /// 相当于先对其执行保护操作再复制。注意，仅复制映射信息，并不复制实际的页面。
     ///
-    /// It can only copy tracked mappings since we consider the untracked
-    /// mappings not useful to be copied.
+    /// 仅支持复制已跟踪的映射，因为未跟踪的映射认为没有复制的意义。
     ///
-    /// After the operation, both cursors will advance by the specified length.
+    /// 操作完成后，两个游标均会按照指定的长度前进。
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// The caller should ensure that
-    ///  - the range being copied with the operation does not affect kernel's
-    ///    memory safety.
-    ///  - both of the cursors are in tracked mappings.
+    /// 调用者必须确保：
+    ///  - 被复制的范围不会危害内核内存安全；
+    ///  - 两个游标都处于跟踪映射区域中。
     ///
-    /// # Panics
+    /// # Panic
     ///
-    /// This function will panic if:
-    ///  - either one of the range to be copied is out of the range where any
-    ///    of the cursor is required to operate;
-    ///  - either one of the specified virtual address ranges only covers a
-    ///    part of a page.
-    ///  - the current cursor's range contains mapped pages.
+    /// 如果发生下列情况之一，将触发 panic：
+    ///  - 任一复制范围超出游标有效操作范围；
+    ///  - 任一指定虚拟地址范围仅覆盖了页面的一部分；
+    ///  - 当前游标所在范围内存在已映射页面。
     pub unsafe fn copy_from(
         &mut self,
         src: &mut Self,
@@ -783,8 +754,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
             match src_entry.to_owned() {
                 Child::PageTable(pt) => {
                     let pt = pt.lock();
-                    // If there's no mapped PTEs in the next level, we can
-                    // skip to save time.
+                    // 如果下一层存在映射，则下降处理以节省时间。
                     if pt.nr_children() != 0 {
                         src.0.push_level(pt);
                     } else {
@@ -797,22 +767,22 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> CursorM
                     continue;
                 }
                 Child::Untracked(_, _, _) => {
-                    panic!("Copying untracked mappings");
+                    panic!("不能复制未跟踪的映射");
                 }
                 Child::Frame(page, mut prop) => {
                     let mapped_page_size = page.size();
 
-                    // Do protection.
+                    // 对页面执行保护操作。
                     src_entry.protect(op);
 
-                    // Do copy.
+                    // 执行复制操作。
                     op(&mut prop);
                     self.jump(src_va).unwrap();
                     let original = self.map(page, prop);
                     assert!(original.is_none());
 
-                    // Only move the source cursor forward since `Self::map` will do it.
-                    // This assertion is to ensure that they move by the same length.
+                    // 仅前进源游标，因为 `Self::map` 已自动前进。
+                    // 此断言确保两者移动的长度一致。
                     debug_assert_eq!(mapped_page_size, page_size::<C>(src.0.level));
                     src.0.move_forward();
                 }

@@ -1,54 +1,69 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! This module provides accessors to the page table entries in a node.
+//! 本模块提供了操作页表节点中各个条目的接口。
 
-use super::{Child, MapTrackingStatus, PageTableEntryTrait, PageTableNode};
-use crate::mm::{nr_subpage_per_huge, page_prop::PageProperty, page_size, PagingConstsTrait};
+use super::{Child, MapTrackingStatus, PageTableEntryTrait, PageTableNode, RawPageTableNode};
+use crate::mm::{
+    nr_subpage_per_huge, page_prop::PageProperty, page_size, PagingConstsTrait, PagingLevel,
+};
 
-/// A view of an entry in a page table node.
+/// 页表节点中单个条目的视图。
 ///
-/// It can be borrowed from a node using the [`PageTableNode::entry`] method.
-///
-/// This is a static reference to an entry in a node that does not account for
-/// a dynamic reference count to the child. It can be used to create a owned
-/// handle, which is a [`Child`].
-pub(in crate::mm) struct Entry<'a, E: PageTableEntryTrait, C: PagingConstsTrait> {
-    /// The page table entry.
+/// 可通过 [`PageTableNode::entry`] 方法从节点中借用获取此视图。
+/// 此结构为页表节点中某条目的静态引用，不涉及对子对象的动态引用计数，
+/// 可用于生成具有所有权的 [`Child`] 句柄。
+pub(crate) struct Entry<'a, 'b, EntryType: PageTableEntryTrait, PagingConsts: PagingConstsTrait>
+where
+    [(); PagingConsts::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<PagingConsts>()]:,
+{
+    /// 页表项数据。
     ///
-    /// We store the page table entry here to optimize the number of reads from
-    /// the node. We cannot hold a `&mut E` reference to the entry because that
-    /// other CPUs may modify the memory location for accessed/dirty bits. Such
-    /// accesses will violate the aliasing rules of Rust and cause undefined
-    /// behaviors.
-    pte: E,
-    /// The index of the entry in the node.
+    /// 将页表项缓存在此处以减少对节点的重复读取。
+    /// 不能直接持有 `&mut EntryType` 引用，因为其他 CPU 可能会修改该内存（访问位/脏页位），
+    /// 这可能违反 Rust 的别名规则，导致未定义行为。
+    pte: EntryType,
+    /// 条目在节点中的索引。
     idx: usize,
-    /// The node that contains the entry.
-    node: &'a mut PageTableNode<E, C>,
+    /// 包含该条目的页表节点。
+    node: &'a mut PageTableNode<'b, EntryType, PagingConsts>,
 }
 
-impl<'a, E: PageTableEntryTrait, C: PagingConstsTrait> Entry<'a, E, C> {
-    /// Returns if the entry does not map to anything.
-    pub(in crate::mm) fn is_none(&self) -> bool {
+impl<'a, 'b, EntryType: PageTableEntryTrait, PagingConsts: PagingConstsTrait>
+    Entry<'a, 'b, EntryType, PagingConsts>
+where
+    [(); PagingConsts::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<PagingConsts>()]:,
+{
+    /// 判断该条目是否没有映射任何内容。
+    pub(crate) fn is_none(&self) -> bool {
         !self.pte.is_present()
     }
 
-    /// Returns if the entry maps to a page table node.
-    pub(in crate::mm) fn is_node(&self) -> bool {
+    /// 判断该条目是否映射到另一个页表节点。
+    pub(crate) fn is_node(&self) -> bool {
         self.pte.is_present() && !self.pte.is_last(self.node.level())
     }
 
-    /// Gets a owned handle to the child.
-    pub(in crate::mm) fn to_owned(&self) -> Child<E, C> {
-        // SAFETY: The entry structure represents an existent entry with the
-        // right node information.
-        unsafe { Child::clone_from_pte(&self.pte, self.node.level(), self.node.is_tracked()) }
+    /// 获取子对象的拥有权句柄。
+    pub(crate) fn to_owned(&self) -> Child<EntryType, PagingConsts> {
+        // 安全性：该条目表示一个有效条目，并且包含正确的节点信息。
+        // unsafe { Child::clone_from_pte(&self, self.node.level(), self.node.is_tracked()) }
+        let child = &self.node.page.table[self.idx];
+        match child {
+            Child::PageTable(raw) => Child::PageTable(raw.clone_shallow()),
+            Child::Frame(frame, page_property) => Child::Frame(frame.clone(), *page_property),
+            Child::Untracked(paddr, level, page_property) => {
+                Child::Untracked(*paddr, *level, *page_property)
+            }
+            Child::None => Child::None,
+        }
     }
 
-    /// Operates on the mapping properties of the entry.
+    /// 修改条目的映射属性。
     ///
-    /// It only modifies the properties if the entry is present.
-    pub(in crate::mm) fn protect(&mut self, op: &mut impl FnMut(&mut PageProperty)) {
+    /// 只有在条目映射有效时才会更新属性。
+    pub(crate) fn protect(&mut self, op: &mut impl FnMut(&mut PageProperty)) {
         if !self.pte.is_present() {
             return;
         }
@@ -63,30 +78,40 @@ impl<'a, E: PageTableEntryTrait, C: PagingConstsTrait> Entry<'a, E, C> {
 
         self.pte.set_prop(new_prop);
 
-        // SAFETY:
-        //  1. The index is within the bounds.
-        //  2. We replace the PTE with a new one, which differs only in
-        //     `PageProperty`, so it is still compatible with the current
-        //     page table node.
+        // 安全性说明：
+        //  1. 索引位于有效范围内。
+        //  2. 我们仅修改了页表项的映射属性，保持与当前节点的兼容性。
         unsafe { self.node.write_pte(self.idx, self.pte) };
     }
 
-    /// Replaces the entry with a new child.
-    ///
-    /// The old child is returned.
+    /// 使用新子节点替换当前条目，并返回旧的子节点。
     ///
     /// # Panics
     ///
-    /// The method panics if the given child is not compatible with the node.
-    /// The compatibility is specified by the [`Child::is_compatible`].
-    pub(in crate::mm) fn replace(self, new_child: Child<E, C>) -> Child<E, C> {
+    /// 如果传入的子节点与节点不兼容，则该方法会 panic，
+    /// 兼容性由 [`Child::is_compatible`] 方法判断。
+    pub(crate) fn replace(
+        self,
+        new_child: Child<EntryType, PagingConsts>,
+    ) -> Child<EntryType, PagingConsts> {
         assert!(new_child.is_compatible(self.node.level(), self.node.is_tracked()));
 
-        // SAFETY: The entry structure represents an existent entry with the
-        // right node information. The old PTE is overwritten by the new child
-        // so that it is not used anymore.
+        // 安全性：该条目表示一个有效条目，其节点信息正确。旧的页表项将被新子对象覆盖，不再使用。
+        // let old_child =
+        //     unsafe { Child::from_pte(self.pte, self.node.level(), self.node.is_tracked()) };
+
+        // 安全性：
+        //  1. 索引位于有效范围内。
+        //  2. 新页表项经过了本函数开头的assert检查，与当前页表节点匹配。
+        unsafe { self.node.write_pte(self.idx, new_child.get_entry()) };
+
         let old_child =
-            unsafe { Child::from_pte(self.pte, self.node.level(), self.node.is_tracked()) };
+            // 安全性
+            //  1. 由于获取 `Entry` 时已经lock了，所以对于此 `Entry` 的操作是独占的。
+            //  2. 由于创建时已经保证索引位于有效范围内，且从来没有修改过索引的值，所以索引仍然有效。
+            //     因此，目标地址是对齐的。
+            //  3. 由于 `RawPageTableNode::table` 在创建时已经正确初始化了，所以目标地址对 `Child` 类型是有效的。
+            unsafe { core::ptr::replace(&mut self.node.page.table[self.idx], new_child) };
 
         if old_child.is_none() && !new_child.is_none() {
             *self.node.nr_children_mut() += 1;
@@ -94,23 +119,16 @@ impl<'a, E: PageTableEntryTrait, C: PagingConstsTrait> Entry<'a, E, C> {
             *self.node.nr_children_mut() -= 1;
         }
 
-        // SAFETY:
-        //  1. The index is within the bounds.
-        //  2. The new PTE is compatible with the page table node, as asserted above.
-        unsafe { self.node.write_pte(self.idx, new_child.into_pte()) };
-
         old_child
     }
 
-    /// Splits the entry to smaller pages if it maps to a untracked huge page.
+    /// 若条目映射为未跟踪的大页，则将其拆分为更小的页面。
     ///
-    /// If the entry does map to a untracked huge page, it is split into smaller
-    /// pages mapped by a child page table node. The new child page table node
-    /// is returned.
-    ///
-    /// If the entry does not map to a untracked huge page, the method returns
-    /// `None`.
-    pub(in crate::mm) fn split_if_untracked_huge(self) -> Option<PageTableNode<E, C>> {
+    /// 如果该条目确实映射为未跟踪的大页，则拆分成由子页表节点管理的小页面，返回新的子页表节点。
+    /// 如果不是未跟踪的大页映射，则返回 `None`。
+    pub(crate) fn split_if_untracked_huge(
+        self,
+    ) -> Option<PageTableNode<'b, EntryType, PagingConsts>> {
         let level = self.node.level();
 
         if !(self.pte.is_last(level)
@@ -123,26 +141,43 @@ impl<'a, E: PageTableEntryTrait, C: PagingConstsTrait> Entry<'a, E, C> {
         let pa = self.pte.paddr();
         let prop = self.pte.prop();
 
-        let mut new_page = PageTableNode::<E, C>::alloc(level - 1, MapTrackingStatus::Untracked);
-        for i in 0..nr_subpage_per_huge::<C>() {
-            let small_pa = pa + i * page_size::<C>(level - 1);
-            let _ = new_page
-                .entry(i)
-                .replace(Child::Untracked(small_pa, level - 1, prop));
+        // let mut new_page = self.alloc(
+        //     level - 1,
+        //     MapTrackingStatus::Untracked,
+        // );
+        let new_page = self
+            .node
+            .alloc_empty_pt(level - 1, MapTrackingStatus::Untracked);
+        self.replace(Child::PageTable(new_page));
+        let cur_child = &mut self.node.page.table[self.idx];
+
+        if let Child::PageTable(ref mut page) = *cur_child {
+            let mut new_page = page.lock();
+            for i in 0..nr_subpage_per_huge::<PagingConsts>() {
+                let small_pa = pa + i * page_size::<PagingConsts>(level - 1);
+                let _ = new_page
+                    .entry(i)
+                    .replace(Child::Untracked(small_pa, level - 1, prop));
+            }
+
+            let _ = self.replace(Child::PageTable(page.clone_raw()));
+
+            Some(new_page)
+        } else {
+            None
         }
-
-        let _ = self.replace(Child::PageTable(new_page.clone_raw()));
-
-        Some(new_page)
     }
 
-    /// Create a new entry at the node.
+    /// 在节点中创建一个新的条目。
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// The caller must ensure that the index is within the bounds of the node.
-    pub(super) unsafe fn new_at(node: &'a mut PageTableNode<E, C>, idx: usize) -> Self {
-        // SAFETY: The index is within the bound.
+    /// 调用者必须保证给定的索引在节点的有效范围内。
+    pub(super) unsafe fn new_at(
+        node: &'a mut PageTableNode<EntryType, PagingConsts>,
+        idx: usize,
+    ) -> Self {
+        // 安全性：索引在有效范围内。
         let pte = unsafe { node.read_pte(idx) };
         Self { pte, idx, node }
     }

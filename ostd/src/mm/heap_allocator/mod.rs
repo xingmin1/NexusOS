@@ -9,9 +9,8 @@ use log::debug;
 use slab_allocator::Heap;
 use spin::Once;
 
-use super::paddr_to_vaddr;
 use crate::{
-    mm::{frame::allocator::FRAME_ALLOCATOR, PAGE_SIZE},
+    mm::{frame::allocator::FRAME_ALLOCATOR, kspace::paddr_to_vaddr, PAGE_SIZE},
     prelude::*,
     sync::SpinLock,
     trap::disable_local,

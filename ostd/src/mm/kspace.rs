@@ -46,19 +46,20 @@ use align_ext::AlignExt;
 use log::info;
 use spin::Once;
 
-use super::{
-    frame::{
-        meta::{impl_frame_meta_for, mapping, MetaPageMeta},
-        Frame, Segment,
-    },
-    nr_subpage_per_huge,
-    page_prop::{CachePolicy, PageFlags, PageProperty, PrivilegedPageFlags},
-    page_table::{KernelMode, PageTable},
-    Paddr, PagingConstsTrait, Vaddr, PAGE_SIZE,
-};
+use super::{frame::Typed, PagingConstsTrait};
 use crate::{
-    arch::mm::{PageTableEntry, PagingConsts},
-    boot::memory_region::MemoryRegionType,
+    arch::mm::PageTableEntry,
+    mm::{
+        boot::MemoryRegionType,
+        frame::{
+            meta::{mapping, MetaPageMeta},
+            Frame, Segment, Unknown,
+        },
+        nr_subpage_per_huge,
+        page_prop::{PageFlags, PageProperty, PrivilegedPageFlags},
+        page_table::{KernelMode, PageTable},
+        Paddr, PagingConsts, Vaddr, PAGE_SIZE,
+    },
 };
 
 /// The shortest supported address width is 39 bits. And the literal
@@ -88,7 +89,7 @@ const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_0000_0000 << ADDR_WIDTH_SHIFT;
 
 const FRAME_METADATA_CAP_VADDR: Vaddr = 0xffff_e100_0000_0000 << ADDR_WIDTH_SHIFT;
 const FRAME_METADATA_BASE_VADDR: Vaddr = 0xffff_e000_0000_0000 << ADDR_WIDTH_SHIFT;
-pub(in crate::mm) const FRAME_METADATA_RANGE: Range<Vaddr> =
+pub(crate) const FRAME_METADATA_RANGE: Range<Vaddr> =
     FRAME_METADATA_BASE_VADDR..FRAME_METADATA_CAP_VADDR;
 
 const TRACKED_MAPPED_PAGES_BASE_VADDR: Vaddr = 0xffff_d000_0000_0000 << ADDR_WIDTH_SHIFT;
@@ -131,7 +132,7 @@ pub static KERNEL_PAGE_TABLE: Once<PageTable<KernelMode, PageTableEntry, PagingC
 ///
 /// This function should be called before:
 ///  - any initializer that modifies the kernel page table.
-pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
+pub fn init_kernel_page_table(meta_pages: Segment<Typed>) {
     info!("Initializing the kernel page table");
 
     let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
@@ -152,7 +153,6 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         let to = 0..phys_mem_cap;
         let prop = PageProperty {
             flags: PageFlags::RW,
-            cache: CachePolicy::Writeback,
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         // SAFETY: we are doing the linear mapping for the kernel.
@@ -167,7 +167,6 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         let from = start_va..start_va + meta_pages.size();
         let prop = PageProperty {
             flags: PageFlags::RW,
-            cache: CachePolicy::Writeback,
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         let mut cursor = kpt.cursor_mut(&from).unwrap();
@@ -187,7 +186,6 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         let from = LINEAR_MAPPING_BASE_VADDR + to.start..LINEAR_MAPPING_BASE_VADDR + to.end;
         let prop = PageProperty {
             flags: PageFlags::RW,
-            cache: CachePolicy::Uncacheable,
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         // SAFETY: we are doing I/O mappings for the kernel.
@@ -209,12 +207,11 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         let from = to.start + offset..to.end + offset;
         let prop = PageProperty {
             flags: PageFlags::RWX,
-            cache: CachePolicy::Writeback,
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         let mut cursor = kpt.cursor_mut(&from).unwrap();
         for frame_paddr in to.step_by(PAGE_SIZE) {
-            let page = Frame::<KernelMeta>::from_unused(frame_paddr, KernelMeta).unwrap();
+            let page = Frame::<Unknown>::from_unused(frame_paddr);
             // SAFETY: we are doing mappings for the kernel.
             unsafe {
                 let _old = cursor.map(page.into(), prop);
@@ -246,9 +243,3 @@ pub unsafe fn activate_kernel_page_table() {
         crate::mm::page_table::boot_pt::dismiss();
     }
 }
-
-/// The metadata of pages that contains the kernel itself.
-#[derive(Debug, Default)]
-pub struct KernelMeta;
-
-impl_frame_meta_for!(KernelMeta);

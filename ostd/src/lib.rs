@@ -6,6 +6,7 @@
 #![feature(btree_cursors)]
 #![feature(const_ptr_sub_ptr)]
 #![feature(const_trait_impl)]
+#![feature(generic_const_exprs)]
 #![feature(core_intrinsics)]
 #![feature(coroutines)]
 #![feature(fn_traits)]

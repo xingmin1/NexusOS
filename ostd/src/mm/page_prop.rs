@@ -1,35 +1,32 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Definitions of page mapping properties.
+//! 页面映射属性的定义。
 
 use core::fmt::Debug;
 
 use bitflags::bitflags;
 
-/// The property of a mapped virtual memory page.
+/// 映射虚拟内存页的属性。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PageProperty {
-    /// The flags associated with the page,
+    /// 与页面关联的标志，
     pub flags: PageFlags,
-    /// The cache policy for the page.
-    pub cache: CachePolicy,
     pub(crate) priv_flags: PrivilegedPageFlags,
 }
 
 impl PageProperty {
-    /// Creates a new `PageProperty` with the given flags and cache policy for the user.
-    pub fn new(flags: PageFlags, cache: CachePolicy, priv_flags: PrivilegedPageFlags) -> Self {
+    /// 为用户创建具有给定标志的新 `PageProperty`。
+    pub fn new(flags: PageFlags) -> Self {
         Self {
             flags,
-            cache,
-            priv_flags,
+            priv_flags: PrivilegedPageFlags::USER,
         }
     }
-    /// Creates a page property that implies an invalid page without mappings.
+
+    /// 创建一个表示无效页面且没有映射的页面属性。
     pub fn new_absent() -> Self {
         Self {
             flags: PageFlags::empty(),
-            cache: CachePolicy::Writeback,
             priv_flags: PrivilegedPageFlags::empty(),
         }
     }
@@ -96,42 +93,38 @@ pub enum CachePolicy {
 }
 
 bitflags! {
-    /// Page protection permissions and access status.
+    /// 页面保护权限和访问状态。
     pub struct PageFlags: u8 {
-        /// Readable.
+        /// 可读。
         const R = 0b00000001;
-        /// Writable.
+        /// 可写。
         const W = 0b00000010;
-        /// Executable.
+        /// 可执行。
         const X = 0b00000100;
-        /// Readable + writable.
-        const RW = Self::R.bits | Self::W.bits;
-        /// Readable + executable.
-        const RX = Self::R.bits | Self::X.bits;
-        /// Readable + writable + executable.
-        const RWX = Self::R.bits | Self::W.bits | Self::X.bits;
-
-        /// Has the memory page been read or written.
+        /// 可读 + 可写。
+        const RW = Self::R.bits() | Self::W.bits();
+        /// 可读 + 可执行。
+        const RX = Self::R.bits() | Self::X.bits();
+        /// 可读 + 可写 + 可执行。
+        const RWX = Self::R.bits() | Self::W.bits() | Self::X.bits();
+        /// 内存页是否已被读取或写入。
         const ACCESSED  = 0b00001000;
-        /// Has the memory page been written.
+        /// 内存页是否已被写入。
         const DIRTY     = 0b00010000;
 
-        /// The first bit available for software use.
+        /// 第一个可供软件使用的位。
         const AVAIL1    = 0b01000000;
-        /// The second bit available for software use.
+        /// 第二个可供软件使用的位。
         const AVAIL2    = 0b10000000;
     }
 }
 
 bitflags! {
-    /// Page property that are only accessible in OSTD.
+    /// 仅在 OSTD 中可访问的页面属性。
     pub struct PrivilegedPageFlags: u8 {
-        /// Accessible from kernel mode.
-        #[cfg(target_arch = "riscv64")]
-        const KERNEL    = 0b00000000;
-        /// Accessible from user mode.
+        /// 可从用户模式访问。
         const USER      = 0b00000001;
-        /// Global page that won't be evicted from TLB with normal TLB flush.
+        /// 全局页面，在正常的 TLB 刷新时不会从 TLB 中被驱逐。
         const GLOBAL    = 0b00000010;
 
         /// (TEE only) If the page is shared with the host.

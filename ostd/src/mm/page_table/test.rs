@@ -5,9 +5,10 @@ use core::mem::ManuallyDrop;
 use super::*;
 use crate::{
     mm::{
+        frame::allocator::FrameAllocOptions,
         kspace::LINEAR_MAPPING_BASE_VADDR,
-        page_prop::{CachePolicy, PageFlags, PrivilegedPageFlags},
-        FrameAllocOptions, MAX_USERSPACE_VADDR,
+        page_prop::{CachePolicy, PageFlags},
+        MAX_USERSPACE_VADDR,
     },
     prelude::*,
 };
@@ -32,11 +33,7 @@ fn test_tracked_map_unmap() {
     let from = PAGE_SIZE..PAGE_SIZE * 2;
     let page = FrameAllocOptions::new().alloc_frame().unwrap();
     let start_paddr = page.start_paddr();
-    let prop = PageProperty::new(
-        PageFlags::RW,
-        CachePolicy::Writeback,
-        PrivilegedPageFlags::KERNEL,
-    );
+    let prop = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
     unsafe { pt.cursor_mut(&from).unwrap().map(page.into(), prop) };
     assert_eq!(pt.query(from.start + 10).unwrap().0, start_paddr + 10);
     assert!(matches!(
@@ -56,11 +53,7 @@ fn test_untracked_map_unmap() {
     let from =
         UNTRACKED_OFFSET + PAGE_SIZE * from_ppn.start..UNTRACKED_OFFSET + PAGE_SIZE * from_ppn.end;
     let to = PAGE_SIZE * to_ppn.start..PAGE_SIZE * to_ppn.end;
-    let prop = PageProperty::new(
-        PageFlags::RW,
-        CachePolicy::Writeback,
-        PrivilegedPageFlags::KERNEL,
-    );
+    let prop = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
 
     unsafe { pt.map(&from, &to, prop).unwrap() };
     for i in 0..100 {
@@ -96,11 +89,7 @@ fn test_user_copy_on_write() {
     let from = PAGE_SIZE..PAGE_SIZE * 2;
     let page = FrameAllocOptions::new().alloc_frame().unwrap();
     let start_paddr = page.start_paddr();
-    let prop = PageProperty::new(
-        PageFlags::RW,
-        CachePolicy::Writeback,
-        PrivilegedPageFlags::KERNEL,
-    );
+    let prop = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
     unsafe { pt.cursor_mut(&from).unwrap().map(page.clone().into(), prop) };
     assert_eq!(pt.query(from.start + 10).unwrap().0, start_paddr + 10);
     assert!(matches!(
@@ -158,7 +147,11 @@ fn test_user_copy_on_write() {
     assert!(child_pt.query(from.start + 10).is_none());
 }
 
-impl<M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> PageTable<M, E, C> {
+impl<M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> PageTable<M, E, C>
+where
+    [(); C::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<C>()]:,
+{
     fn protect(&self, range: &Range<Vaddr>, mut op: impl FnMut(&mut PageProperty)) {
         let mut cursor = self.cursor_mut(range).unwrap();
         loop {
@@ -181,11 +174,7 @@ fn test_base_protect_query() {
     let from_ppn = 1..1000;
     let from = PAGE_SIZE * from_ppn.start..PAGE_SIZE * from_ppn.end;
     let to = FrameAllocOptions::new().alloc_segment(999).unwrap();
-    let prop = PageProperty::new(
-        PageFlags::RW,
-        CachePolicy::Writeback,
-        PrivilegedPageFlags::KERNEL,
-    );
+    let prop = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
     unsafe {
         let mut cursor = pt.cursor_mut(&from).unwrap();
         for page in to {
@@ -239,11 +228,7 @@ fn test_untracked_large_protect_query() {
         UNTRACKED_OFFSET + PAGE_SIZE * from_ppn.start..UNTRACKED_OFFSET + PAGE_SIZE * from_ppn.end;
     let to = PAGE_SIZE * to_ppn.start..PAGE_SIZE * to_ppn.end;
     let mapped_pa_of_va = |va: Vaddr| va - (from.start - to.start);
-    let prop = PageProperty::new(
-        PageFlags::RW,
-        CachePolicy::Writeback,
-        PrivilegedPageFlags::KERNEL,
-    );
+    let prop = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
     unsafe { pt.map(&from, &to, prop).unwrap() };
     for (item, i) in pt.cursor(&from).unwrap().zip(0..512 + 2 + 2) {
         let PageTableItem::MappedUntracked { va, pa, len, prop } = item else {

@@ -1,46 +1,52 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! This module specifies the type of the children of a page table node.
+//! 本模块定义了页表节点子项（Child）的类型。
 
-use core::{mem::ManuallyDrop, panic};
+use core::mem::ManuallyDrop;
 
 use super::{MapTrackingStatus, PageTableEntryTrait, RawPageTableNode};
 use crate::{
     arch::mm::{PageTableEntry, PagingConsts},
     mm::{
-        frame::{inc_frame_ref_count, meta::AnyFrameMeta, Frame},
+        frame::{Frame, MemoryType, Unknown},
+        nr_subpage_per_huge,
         page_prop::PageProperty,
         Paddr, PagingConstsTrait, PagingLevel,
     },
 };
 
-/// A child of a page table node.
+/// 页表节点的子项。
 ///
-/// This is a owning handle to a child of a page table node. If the child is
-/// either a page table node or a page, it holds a reference count to the
-/// corresponding page.
+/// 这是一个拥有页表节点子项所有权的句柄。如果子项是页表节点或页面，
+/// 则该句柄会持有相应页面的引用计数。
 #[derive(Debug)]
-pub(in crate::mm) enum Child<
-    E: PageTableEntryTrait = PageTableEntry,
-    C: PagingConstsTrait = PagingConsts,
-> {
-    PageTable(RawPageTableNode<E, C>),
-    Frame(Frame<dyn AnyFrameMeta>, PageProperty),
-    /// Pages not tracked by handles.
+pub(crate) enum Child<
+    EntryType: PageTableEntryTrait = PageTableEntry,
+    PagingConst: PagingConstsTrait = PagingConsts,
+> where
+    [(); PagingConst::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<PagingConst>()]:,
+{
+    PageTable(RawPageTableNode<EntryType, PagingConst>),
+    Frame(Frame<Unknown>, PageProperty),
+    /// 未由句柄追踪的页面。
     Untracked(Paddr, PagingLevel, PageProperty),
     None,
 }
 
-impl<E: PageTableEntryTrait, C: PagingConstsTrait> Child<E, C> {
-    /// Returns whether the child does not map to anything.
-    pub(in crate::mm) fn is_none(&self) -> bool {
+impl<EntryType: PageTableEntryTrait, PagingConst: PagingConstsTrait> Child<EntryType, PagingConst>
+where
+    [(); PagingConst::NR_LEVELS as usize]:,
+    [(); nr_subpage_per_huge::<PagingConst>()]:,
+{
+    /// 判断子项是否为空（即不映射任何有效内容）。
+    pub(crate) fn is_none(&self) -> bool {
         matches!(self, Child::None)
     }
 
-    /// Returns whether the child is compatible with the given node.
+    /// 判断该子项是否与指定的节点兼容。
     ///
-    /// In other words, it checks whether the child can be a child of a node
-    /// with the given level and tracking status.
+    /// 换句话说，该方法检查子项是否可以作为层级为 node_level 且跟踪状态为 is_tracked 的节点的子项。
     pub(super) fn is_compatible(
         &self,
         node_level: PagingLevel,
@@ -58,110 +64,89 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> Child<E, C> {
         }
     }
 
-    /// Converts a child into a owning PTE.
-    ///
-    /// By conversion it loses information about whether the page is tracked
-    /// or not. Also it loses the level information. However, the returned PTE
-    /// takes the ownership (reference count) of the child.
-    ///
-    /// Usually this is for recording the PTE into a page table node. When the
-    /// child is needed again by reading the PTE of a page table node, extra
-    /// information should be provided using the [`Child::from_pte`] method.
-    pub(super) fn into_pte(self) -> E {
+    /// 借出子项的的页表项（PTE）。
+    pub(super) fn get_entry(&self) -> EntryType {
         match self {
-            Child::PageTable(pt) => {
-                let pt = ManuallyDrop::new(pt);
-                E::new_pt(pt.paddr())
-            }
+            Child::PageTable(pt) => EntryType::new_pt(pt.paddr()),
             Child::Frame(page, prop) => {
                 let level = page.level();
-                E::new_page(page.into_raw(), level, prop)
+                EntryType::new_page(page.start_paddr(), level, *prop)
             }
-            Child::Untracked(pa, level, prop) => E::new_page(pa, level, prop),
-            Child::None => E::new_absent(),
+            Child::Untracked(pa, level, prop) => EntryType::new_page(*pa, *level, *prop),
+            Child::None => EntryType::new_absent(),
         }
     }
 
-    /// Converts a PTE back to a child.
-    ///
-    /// # Safety
-    ///
-    /// The provided PTE must be originated from [`Child::into_pte`]. And the
-    /// provided information (level and tracking status) must be the same with
-    /// the lost information during the conversion. Strictly speaking, the
-    /// provided arguments must be compatible with the original child (
-    /// specified by [`Child::is_compatible`]).
-    ///
-    /// This method should be only used no more than once for a PTE that has
-    /// been converted from a child using the [`Child::into_pte`] method.
-    pub(super) unsafe fn from_pte(
-        pte: E,
-        level: PagingLevel,
-        is_tracked: MapTrackingStatus,
-    ) -> Self {
-        if !pte.is_present() {
-            return Child::None;
-        }
-
-        let paddr = pte.paddr();
-
-        if !pte.is_last(level) {
-            // SAFETY: The physical address points to a valid page table node
-            // at the given level.
-            return Child::PageTable(unsafe { RawPageTableNode::from_raw_parts(paddr, level - 1) });
-        }
-
-        match is_tracked {
-            MapTrackingStatus::Tracked => {
-                // SAFETY: The physical address points to a valid page.
-                let page = unsafe { Frame::<dyn AnyFrameMeta>::from_raw(paddr) };
-                Child::Frame(page, pte.prop())
-            }
-            MapTrackingStatus::Untracked => Child::Untracked(paddr, level, pte.prop()),
-            MapTrackingStatus::NotApplicable => panic!("Invalid tracking status"),
-        }
-    }
-
-    /// Gains an extra owning reference to the child.
-    ///
-    /// # Safety
-    ///
-    /// The provided PTE must be originated from [`Child::into_pte`], which is
-    /// the same requirement as the [`Child::from_pte`] method.
-    ///
-    /// This method must not be used with a PTE that has been restored to a
-    /// child using the [`Child::from_pte`] method.
-    pub(super) unsafe fn clone_from_pte(
-        pte: &E,
-        level: PagingLevel,
-        is_tracked: MapTrackingStatus,
-    ) -> Self {
-        if !pte.is_present() {
-            return Child::None;
-        }
-
-        let paddr = pte.paddr();
-
-        if !pte.is_last(level) {
-            // SAFETY: The physical address is valid and the PTE already owns
-            // the reference to the page.
-            unsafe { inc_frame_ref_count(paddr) };
-            // SAFETY: The physical address points to a valid page table node
-            // at the given level.
-            return Child::PageTable(unsafe { RawPageTableNode::from_raw_parts(paddr, level - 1) });
-        }
-
-        match is_tracked {
-            MapTrackingStatus::Tracked => {
-                // SAFETY: The physical address is valid and the PTE already owns
-                // the reference to the page.
-                unsafe { inc_frame_ref_count(paddr) };
-                // SAFETY: The physical address points to a valid page.
-                let page = unsafe { Frame::<dyn AnyFrameMeta>::from_raw(paddr) };
-                Child::Frame(page, pte.prop())
-            }
-            MapTrackingStatus::Untracked => Child::Untracked(paddr, level, pte.prop()),
-            MapTrackingStatus::NotApplicable => panic!("Invalid tracking status"),
-        }
-    }
+    // /// 将页表项（PTE）还原为对应的子项。
+    // ///
+    // /// # 安全性说明
+    // ///
+    // /// 提供的 PTE 必须源自 [`Child::get_entry`] 的转换，
+    // /// 并且提供的层级及跟踪状态信息必须与转换时所丢失的信息一致
+    // /// （严格来说，这些参数必须与原始子项兼容，详见 [`Child::is_compatible`]）。
+    // ///
+    // /// 对于同一个通过 [`Child::get_entry`] 得到的 PTE，此方法只能调用一次。
+    // pub(super) unsafe fn from_pte(
+    //     pte: EntryType,
+    //     level: PagingLevel,
+    //     is_tracked: MapTrackingStatus,
+    // ) -> Self {
+    //     if !pte.is_present() {
+    //         return Child::None;
+    //     }
+    //
+    //     let paddr = pte.paddr();
+    //
+    //     if !pte.is_last(level) {
+    //         // 安全性说明：该物理地址指向指定层级上有效的页表节点。
+    //         return Child::PageTable(unsafe { RawPageTableNode::from_raw_parts(paddr, level - 1) });
+    //     }
+    //
+    //     match is_tracked {
+    //         MapTrackingStatus::Tracked => {
+    //             // 安全性说明：该物理地址指向一个有效页面。
+    //             let page = unsafe { Frame::<dyn MemoryType>::from_raw(paddr) };
+    //             Child::Frame(page, pte.prop())
+    //         }
+    //         MapTrackingStatus::Untracked => Child::Untracked(paddr, level, pte.prop()),
+    //         MapTrackingStatus::NotApplicable => panic!("Invalid tracking status"),
+    //     }
+    // }
+    //
+    // /// 为子项增加额外的所有权引用。
+    // ///
+    // /// # 安全性
+    // ///
+    // /// 提供的 PTE 必须源自 [`Child::get_entry`]（与 [`Child::from_pte`] 的要求一致），
+    // /// 且不得对已通过 [`Child::from_pte`] 恢复的 PTE 使用此方法。
+    // pub(super) unsafe fn clone_from_pte(
+    //     pte: &EntryType,
+    //     level: PagingLevel,
+    //     is_tracked: MapTrackingStatus,
+    // ) -> Self {
+    //     if !pte.is_present() {
+    //         return Child::None;
+    //     }
+    //
+    //     let paddr = pte.paddr();
+    //
+    //     if !pte.is_last(level) {
+    //         // 安全性说明：该物理地址有效，且 PTE 已持有该页面的引用计数。
+    //         unsafe { inc_frame_ref_count(paddr) };
+    //         // 安全性说明：该物理地址指向指定层级上有效的页表节点。
+    //         return Child::PageTable(unsafe { RawPageTableNode::from_raw_parts(paddr, level - 1) });
+    //     }
+    //
+    //     match is_tracked {
+    //         MapTrackingStatus::Tracked => {
+    //             // 安全性说明：该物理地址有效，且 PTE 已持有该页面的引用计数。
+    //             unsafe { inc_frame_ref_count(paddr) };
+    //             // 安全性说明：该物理地址指向一个有效页面。
+    //             let page = unsafe { Frame::<dyn MemoryType>::from_raw(paddr) };
+    //             Child::Frame(page, pte.prop())
+    //         }
+    //         MapTrackingStatus::Untracked => Child::Untracked(paddr, level, pte.prop()),
+    //         MapTrackingStatus::NotApplicable => panic!("Invalid tracking status"),
+    //     }
+    // }
 }

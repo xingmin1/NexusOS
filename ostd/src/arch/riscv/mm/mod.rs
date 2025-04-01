@@ -7,7 +7,7 @@ use crate::{
     mm::{
         page_prop::{CachePolicy, PageFlags, PageProperty, PrivilegedPageFlags as PrivFlags},
         page_table::PageTableEntryTrait,
-        Paddr, PagingConstsTrait, PagingLevel, Vaddr, PAGE_SIZE,
+        Paddr, PagingConstsTrait, PagingLevel, PodOnce, Vaddr, PAGE_SIZE,
     },
     util::SameSizeAs,
     Pod,
@@ -87,6 +87,8 @@ pub(crate) fn tlb_flush_all_including_global() {
 #[derive(Clone, Copy, Pod, Default)]
 #[repr(C)]
 pub struct PageTableEntry(usize);
+
+impl PodOnce for PageTableEntry {}
 
 /// Activate the given level 4 page table.
 ///
@@ -188,16 +190,8 @@ impl PageTableEntryTrait for PageTableEntry {
                 PrivFlags::GLOBAL,
                 PageTableFlags::GLOBAL
             )
-            | parse_flags!(
-                prop.flags.AVAIL1.bits(),
-                PageFlags::AVAIL1,
-                PageTableFlags::RSV1
-            )
-            | parse_flags!(
-                prop.flags.AVAIL2.bits(),
-                PageFlags::AVAIL2,
-                PageTableFlags::RSV2
-            );
+            | parse_flags!(prop.flags.bits(), PageFlags::AVAIL1, PageTableFlags::RSV1)
+            | parse_flags!(prop.flags.bits(), PageFlags::AVAIL2, PageTableFlags::RSV2);
 
         match prop.cache {
             CachePolicy::Writeback => (),

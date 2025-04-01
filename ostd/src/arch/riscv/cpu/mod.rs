@@ -10,7 +10,27 @@ use riscv::register::scause::{Exception, Trap};
 
 pub use super::trap::GeneralRegs as RawGeneralRegs;
 use super::trap::{TrapFrame, UserContext as RawUserContext};
-use crate::user::{ReturnReason, UserContextApi, UserContextApiInternal};
+use crate::{
+    early_println,
+    user::{ReturnReason, UserContextApi, UserContextApiInternal},
+};
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FpuState(());
+
+impl FpuState {
+    pub fn new() -> Self {
+        Self(())
+    }
+
+    pub fn save(&self) {
+        // TODO
+    }
+
+    pub fn restore(&self) {
+        // TODO
+    }
+}
 
 /// Cpu context, including both general-purpose registers and FPU state.
 #[derive(Clone, Copy, Debug)]
@@ -18,7 +38,7 @@ use crate::user::{ReturnReason, UserContextApi, UserContextApiInternal};
 pub struct UserContext {
     user_context: RawUserContext,
     trap: Trap,
-    fpu_state: (), // TODO
+    fpu_state: FpuState,
     cpu_exception_info: CpuExceptionInfo,
 }
 
@@ -38,7 +58,7 @@ impl Default for UserContext {
         UserContext {
             user_context: RawUserContext::default(),
             trap: Trap::Exception(Exception::Unknown),
-            fpu_state: (),
+            fpu_state: FpuState::default(),
             cpu_exception_info: CpuExceptionInfo::default(),
         }
     }
@@ -78,12 +98,12 @@ impl UserContext {
     }
 
     /// Returns a reference to the FPU state.
-    pub fn fpu_state(&self) -> &() {
+    pub fn fpu_state(&self) -> &FpuState {
         &self.fpu_state
     }
 
     /// Returns a mutable reference to the FPU state.
-    pub fn fpu_state_mut(&mut self) -> &mut () {
+    pub fn fpu_state_mut(&mut self) -> &mut FpuState {
         &mut self.fpu_state
     }
 
@@ -119,6 +139,7 @@ impl UserContextApiInternal for UserContext {
                 Trap::Exception(e) => {
                     let stval = riscv::register::stval::read();
                     log::trace!("Exception, scause: {e:?}, stval: {stval:#x?}");
+                    early_println!("Exception, scause: {:?}, stval: {:#x?}", e, stval);
                     self.cpu_exception_info = CpuExceptionInfo {
                         code: e,
                         page_fault_addr: stval,

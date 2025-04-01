@@ -115,6 +115,7 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> BootPageTable<E, C> {
                 pte.set_prop(PageProperty::new(
                     prop.flags - PageFlags::AVAIL1,
                     prop.cache,
+                    prop.priv_flags,
                 ));
             }
         });
@@ -240,6 +241,7 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> BootPageTable<E, C> {
         pte.set_prop(PageProperty::new(
             prop.flags | PageFlags::AVAIL1,
             prop.cache,
+            prop.priv_flags,
         ));
 
         pte
@@ -290,7 +292,7 @@ fn test_boot_pt_map_protect() {
     use super::page_walk;
     use crate::{
         arch::mm::{PageTableEntry, PagingConsts},
-        mm::{CachePolicy, FrameAllocOptions, PageFlags},
+        mm::{CachePolicy, FrameAllocOptions, PageFlags, PrivilegedPageFlags},
     };
 
     let root_frame = FrameAllocOptions::new().alloc_frame().unwrap();
@@ -303,7 +305,11 @@ fn test_boot_pt_map_protect() {
 
     let from1 = 0x1000;
     let to1 = 0x2;
-    let prop1 = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
+    let prop1 = PageProperty::new(
+        PageFlags::RW,
+        CachePolicy::Writeback,
+        PrivilegedPageFlags::KERNEL,
+    );
     unsafe { boot_pt.map_base_page(from1, to1, prop1) };
     assert_eq!(
         unsafe { page_walk::<PageTableEntry, PagingConsts>(root_paddr, from1 + 1) },
@@ -314,13 +320,17 @@ fn test_boot_pt_map_protect() {
         unsafe { page_walk::<PageTableEntry, PagingConsts>(root_paddr, from1 + 1) },
         Some((
             to1 * PAGE_SIZE + 1,
-            PageProperty::new(PageFlags::RX, CachePolicy::Writeback)
+            PageProperty::new(PageFlags::RX, CachePolicy::Writeback, PrivilegedPageFlags::KERNEL)
         ))
     );
 
     let from2 = 0x2000;
     let to2 = 0x3;
-    let prop2 = PageProperty::new(PageFlags::RX, CachePolicy::Uncacheable);
+    let prop2 = PageProperty::new(
+        PageFlags::RX | PageFlags::W,
+        CachePolicy::Uncacheable,
+        PrivilegedPageFlags::KERNEL,
+    );
     unsafe { boot_pt.map_base_page(from2, to2, prop2) };
     assert_eq!(
         unsafe { page_walk::<PageTableEntry, PagingConsts>(root_paddr, from2 + 2) },
@@ -331,7 +341,7 @@ fn test_boot_pt_map_protect() {
         unsafe { page_walk::<PageTableEntry, PagingConsts>(root_paddr, from2 + 2) },
         Some((
             to2 * PAGE_SIZE + 2,
-            PageProperty::new(PageFlags::RW, CachePolicy::Uncacheable)
+            PageProperty::new(PageFlags::RW, CachePolicy::Uncacheable, PrivilegedPageFlags::KERNEL)
         ))
     );
 }

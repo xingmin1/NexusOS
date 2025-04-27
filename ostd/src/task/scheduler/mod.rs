@@ -240,7 +240,10 @@ where
 {
     let next_task = loop {
         let mut action = ReschedAction::DoNothing;
-        SCHEDULER.get().unwrap().local_mut_rq_with(&mut |rq| {
+        SCHEDULER
+            .get()
+            .expect("SCHEDULER not initialized")
+            .local_mut_rq_with(&mut |rq| {
             action = f(rq);
         });
 

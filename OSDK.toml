@@ -102,7 +102,7 @@ qemu.args = """\
 -machine virt \
 -m 1G \
 -nographic \
--smp 1 \
+-smp 2 \
 -no-reboot \
 -rtc base=utc \
 """

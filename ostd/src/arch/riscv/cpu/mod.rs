@@ -6,7 +6,10 @@ pub mod local;
 
 use core::fmt::Debug;
 
-use riscv::register::scause::{Exception, Trap};
+use riscv::{
+    interrupt::{Exception, Interrupt},
+    register::scause::Trap,
+};
 
 pub use super::trap::GeneralRegs as RawGeneralRegs;
 use super::trap::{TrapFrame, UserContext as RawUserContext};
@@ -37,7 +40,7 @@ impl FpuState {
 #[repr(C)]
 pub struct UserContext {
     user_context: RawUserContext,
-    trap: Trap,
+    trap: Trap<Interrupt, Exception>,
     fpu_state: FpuState,
     cpu_exception_info: CpuExceptionInfo,
 }
@@ -57,7 +60,7 @@ impl Default for UserContext {
     fn default() -> Self {
         UserContext {
             user_context: RawUserContext::default(),
-            trap: Trap::Exception(Exception::Unknown),
+            trap: Trap::Exception(Exception::UserEnvCall),
             fpu_state: FpuState::default(),
             cpu_exception_info: CpuExceptionInfo::default(),
         }
@@ -67,7 +70,7 @@ impl Default for UserContext {
 impl Default for CpuExceptionInfo {
     fn default() -> Self {
         CpuExceptionInfo {
-            code: Exception::Unknown,
+            code: Exception::UserEnvCall,
             page_fault_addr: 0,
             error_code: 0,
         }
@@ -130,7 +133,7 @@ impl UserContextApiInternal for UserContext {
     {
         let ret = loop {
             self.user_context.run();
-            match riscv::register::scause::read().cause() {
+            match riscv::interrupt::cause::<Interrupt, Exception>() {
                 Trap::Interrupt(_) => todo!(),
                 Trap::Exception(Exception::UserEnvCall) => {
                     self.user_context.sepc += 4;

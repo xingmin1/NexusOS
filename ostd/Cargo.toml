@@ -52,9 +52,11 @@ iced-x86 = { version = "1.21.0", default-features = false, features = [
 tdx-guest = { version = "0.1.8", optional = true }
 
 [target.riscv64gc-unknown-none-elf.dependencies]
-riscv = { version = "0.11.1", features = ["s-mode"] }
+riscv = { version = "0.13.0", features = ["s-mode"] }
 sbi-rt = "0.0.3"
+sbi-spec = "0.0.7"
 fdt = { version = "0.1.5", features = ["pretty-printing"] }
+crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["cvm_guest"]

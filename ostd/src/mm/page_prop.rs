@@ -132,6 +132,9 @@ bitflags! {
         /// Accessible from user mode.
         const USER      = 0b00000001;
         /// Global page that won't be evicted from TLB with normal TLB flush.
+        /// # 在 RISC-V 中，
+        /// 1. 当执行 rs2=x0 的 SFENCE.VMA 指令时，不会从本地地址转换缓存中刷新那些 Global 被设置的映射。
+        /// 2. 由于 User(第4位，从0开始) 不被设置时为 KERNEL，所以当是 Global(第5位，从0开始) 时，也是 KERNEL 的，即在这里 PrivilegedPageFlags::Global 其实也有 KERNEL 的含义。
         const GLOBAL    = 0b00000010;
 
         /// (TEE only) If the page is shared with the host.

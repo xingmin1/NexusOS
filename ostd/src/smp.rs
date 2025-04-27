@@ -10,6 +10,7 @@ use alloc::collections::VecDeque;
 use spin::Once;
 
 use crate::{
+    arch::irq::IpiSendError,
     cpu::{CpuSet, PinCurrentCpu},
     cpu_local,
     sync::SpinLock,
@@ -49,7 +50,9 @@ pub fn inter_processor_call(targets: &CpuSet, f: fn()) {
         }
         // SAFETY: It is safe to send inter processor call IPI to other CPUs.
         unsafe {
-            crate::arch::irq::send_ipi(cpu_id, irq_num);
+            while let Err(IpiSendError::QueueFull) = crate::arch::irq::send_ipi(cpu_id, irq_num) {
+                core::hint::spin_loop();
+            }
         }
     }
     if call_on_self {
@@ -81,7 +84,7 @@ fn do_inter_processor_call(_trapframe: &TrapFrame) {
 }
 
 pub(super) fn init() {
-    let mut irq = IrqLine::alloc().unwrap();
+    let mut irq = IrqLine::alloc().expect("Failed to allocate IRQ line for inter-processor call");
     irq.on_active(do_inter_processor_call);
     INTER_PROCESSOR_CALL_IRQ.call_once(|| irq);
 }

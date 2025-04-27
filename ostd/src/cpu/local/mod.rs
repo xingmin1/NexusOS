@@ -34,7 +34,7 @@ mod cpu_local;
 
 pub(crate) mod single_instr;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use align_ext::AlignExt;
 pub use cell::CpuLocalCell;
@@ -73,26 +73,30 @@ pub(crate) unsafe fn early_init_bsp_local_base() {
     }
 }
 
-/// The BSP initializes the CPU-local areas for APs.
-static CPU_LOCAL_STORAGES: Once<Vec<Segment<KernelMeta>>> = Once::new();
+/// 存储为每个应用处理器(AP)分配的CPU本地数据段，索引为AP的hart ID
+pub(crate) static AP_CPU_LOCAL_AREAS: Once<Vec<Option<Segment<KernelMeta>>>> = Once::new();
 
-/// Initializes the CPU local data for the bootstrap processor (BSP).
+/// 初始化引导处理器(BSP)的CPU本地数据，并为AP分配CPU本地存储区域
 ///
-/// # Safety
+/// # 安全性
 ///
-/// This function can only called on the BSP, for once.
+/// 本函数只能在BSP上调用且只能调用一次
 ///
-/// It must be guaranteed that the BSP will not access local data before
-/// this function being called, otherwise copying non-constant values
-/// will result in pretty bad undefined behavior.
+/// 必须确保BSP在调用本函数前不会访问本地数据，否则复制非常量值会导致严重的未定义行为
 pub unsafe fn init_on_bsp() {
     let bsp_base_va = __cpu_local_start as usize;
     let bsp_end_va = __cpu_local_end as usize;
 
     let num_cpus = super::num_cpus();
+    let bsp_hart_id = crate::cpu::CpuId::bsp().as_usize();
 
-    let mut cpu_local_storages = Vec::with_capacity(num_cpus - 1);
-    for _ in 1..num_cpus {
+    let mut ap_local_areas = vec![None; num_cpus];
+
+    for ap_id in 0..num_cpus {
+        if ap_id == bsp_hart_id {
+            continue;
+        }
+
         let ap_pages = {
             let nbytes = (bsp_end_va - bsp_base_va).align_up(PAGE_SIZE);
             FrameAllocOptions::new()
@@ -102,9 +106,9 @@ pub unsafe fn init_on_bsp() {
         };
         let ap_pages_ptr = paddr_to_vaddr(ap_pages.start_paddr()) as *mut u8;
 
-        // SAFETY: The BSP has not initialized the CPU-local area, so the objects in
-        // in the `.cpu_local` section can be bitwise bulk copied to the AP's local
-        // storage. The destination memory is allocated so it is valid to write to.
+        // 从BSP的.cpu_local段复制初始数据
+        // 安全性：BSP尚未初始化CPU本地区域，因此.cpu_local段中的对象可以按位批量复制到AP的本地存储
+        // 目标内存已分配，因此写入是有效的
         unsafe {
             core::ptr::copy_nonoverlapping(
                 bsp_base_va as *const u8,
@@ -113,33 +117,38 @@ pub unsafe fn init_on_bsp() {
             );
         }
 
-        cpu_local_storages.push(ap_pages);
+        ap_local_areas[ap_id] = Some(ap_pages);
     }
 
-    CPU_LOCAL_STORAGES.call_once(|| cpu_local_storages);
+    // 存储映射关系供AP后续查找
+    AP_CPU_LOCAL_AREAS.call_once(|| ap_local_areas);
 
+    // 设置BSP自身的基地址（仍使用链接器脚本分配的段）
     arch::cpu::local::set_base(bsp_base_va as u64);
 
     has_init::set_true();
 }
 
-/// Initializes the CPU local data for the application processor (AP).
+/// 初始化应用处理器(AP)的CPU本地数据
 ///
-/// # Safety
+/// # 安全性
 ///
-/// This function can only called on the AP.
+/// 本函数只能在AP上调用
 pub unsafe fn init_on_ap(cpu_id: u32) {
-    let ap_pages = CPU_LOCAL_STORAGES
+    // 查找预分配的本AP对应的段
+    let ap_areas_map = AP_CPU_LOCAL_AREAS
         .get()
-        .unwrap()
-        .get(cpu_id as usize - 1)
-        .unwrap();
+        .expect("AP_CPU_LOCAL_AREAS is not initialized before init_on_ap");
 
-    let ap_pages_ptr = paddr_to_vaddr(ap_pages.start_paddr()) as *mut u32;
+    let ap_pages_segment = ap_areas_map[cpu_id as usize]
+        .as_ref()
+        .unwrap_or_else(|| panic!("can't find the CPU local storage area for AP {}", cpu_id));
 
-    // SAFETY: the memory will be dedicated to the AP. And we are on the AP.
+    let ap_base_ptr = paddr_to_vaddr(ap_pages_segment.start_paddr());
+
+    // 安全性：该内存是为本AP分配的，且当前在AP上执行
     unsafe {
-        arch::cpu::local::set_base(ap_pages_ptr as u64);
+        arch::cpu::local::set_base(ap_base_ptr as u64);
     }
 
     crate::task::reset_preempt_info();

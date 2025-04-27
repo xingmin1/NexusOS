@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! Interrupts.
-
 use alloc::{boxed::Box, fmt::Debug, sync::Arc, vec::Vec};
 
+use crossbeam_queue::ArrayQueue;
 use id_alloc::IdAlloc;
 use spin::Once;
 
 use crate::{
     cpu::CpuId,
+    cpu_local,
     sync::{Mutex, PreemptDisabled, SpinLock, SpinLockGuard},
     trap::TrapFrame,
 };
@@ -17,6 +18,10 @@ use crate::{
 pub(crate) static IRQ_ALLOCATOR: Once<SpinLock<IdAlloc>> = Once::new();
 
 pub(crate) static IRQ_LIST: Once<Vec<IrqLine>> = Once::new();
+
+cpu_local! {
+    pub(crate) static CPU_IPI_QUEUES: Once<ArrayQueue<u8>> = Once::new();
+}
 
 pub(crate) fn init() {
     let mut list: Vec<IrqLine> = Vec::new();
@@ -29,10 +34,27 @@ pub(crate) fn init() {
     IRQ_LIST.call_once(|| list);
     CALLBACK_ID_ALLOCATOR.call_once(|| Mutex::new(IdAlloc::with_capacity(256)));
     IRQ_ALLOCATOR.call_once(|| SpinLock::new(IdAlloc::with_capacity(256)));
+    for cpu_id in crate::cpu::all_cpus() {
+        CPU_IPI_QUEUES
+            .get_on_cpu(cpu_id)
+            .call_once(|| ArrayQueue::new(32));
+    }
+}
+
+/// 启用 Supervisor 中断（SIE 位）和特定的 S 级中断（定时器、软件、外部）。
+pub(crate) fn enable_all_local() {
+    unsafe {
+        riscv::interrupt::enable();
+        riscv::register::sie::set_sext();
+        riscv::register::sie::set_ssoft();
+        riscv::register::sie::set_stimer();
+    }
 }
 
 pub(crate) fn enable_local() {
-    unsafe { riscv::interrupt::enable() }
+    unsafe {
+        riscv::interrupt::enable();
+    }
 }
 
 pub(crate) fn disable_local() {
@@ -45,12 +67,30 @@ pub(crate) fn is_local_enabled() -> bool {
 
 static CALLBACK_ID_ALLOCATOR: Once<Mutex<IdAlloc>> = Once::new();
 
+/// 中断回调函数封装结构
+///
+/// 用于封装中断发生时需要执行的回调函数及其唯一标识。
+/// 包含实际的中断处理函数和用于标识该回调的唯一ID。
 pub struct CallbackElement {
+    /// 实际的中断处理函数闭包
+    ///
+    /// 该函数接受一个 TrapFrame 引用作为参数，用于处理中断时的上下文信息。
+    /// 需要满足跨线程安全（Send + Sync）和静态生命周期要求。
     function: Box<dyn Fn(&TrapFrame) + Send + Sync + 'static>,
+
+    /// 回调函数的唯一标识符
+    ///
+    /// 用于在注册/注销回调时进行唯一性标识和管理。
     id: usize,
 }
 
 impl CallbackElement {
+    /// 执行注册的回调函数
+    ///
+    /// # 参数
+    /// - `element`: 中断发生时保存的上下文信息，包含寄存器状态等关键信息。
+    ///
+    /// 该方法会调用存储在结构体中的实际中断处理函数，传递当前的中断上下文。
     pub fn call(&self, element: &TrapFrame) {
         self.function.call((element,));
     }
@@ -140,12 +180,51 @@ impl Drop for IrqCallbackHandle {
     }
 }
 
-/// Sends a general inter-processor interrupt (IPI) to the specified CPU.
+/// 发送 IPI 时可能发生的错误
+#[derive(Debug, PartialEq, Eq)]
+pub enum IpiSendError {
+    /// 目标 CPU 的 IPI 命令队列已满
+    QueueFull,
+    /// 底层 SBI send_ipi 调用失败
+    SbiError(sbi_spec::binary::Error),
+}
+
+impl From<sbi_spec::binary::Error> for IpiSendError {
+    fn from(err: sbi_spec::binary::Error) -> Self {
+        IpiSendError::SbiError(err)
+    }
+}
+
+/// 发送处理器间中断到指定 CPU
 ///
-/// # Safety
+/// # 安全性
 ///
-/// The caller must ensure that the CPU ID and the interrupt number corresponds
-/// to a safe function to call.
-pub(crate) unsafe fn send_ipi(cpu_id: CpuId, irq_num: u8) {
-    unimplemented!()
+/// 调用者需确保 CPU ID 和中断号对应的操作是安全的
+pub(crate) unsafe fn send_ipi(cpu_id: CpuId, irq_num: u8) -> Result<(), IpiSendError> {
+    let hart_id = cpu_id.as_usize();
+    crate::early_println!("send_ipi: send IPI to CPU {}", hart_id);
+
+    let queue = CPU_IPI_QUEUES
+        .get_on_cpu(cpu_id)
+        .get()
+        .expect("CPU_IPI_QUEUES is not initialized");
+
+    queue.push(irq_num).map_err(|_| IpiSendError::QueueFull)?;
+
+    sbi_rt::send_ipi(build_hart_mask(hart_id))
+        .into_result()
+        .inspect_err(|e| {
+            log::error!(
+                "send_ipi: send IPI to CPU {} failed, SBI error: {:?}",
+                hart_id,
+                e
+            );
+        })?;
+    Ok(())
+}
+
+/// 构建支持大范围 hart ID 的掩码
+fn build_hart_mask(hart_id: usize) -> sbi_rt::HartMask {
+    let (base, mask) = ((hart_id / 32) * 32, 1 << (hart_id % 32));
+    sbi_rt::HartMask::from_mask_base(mask, base)
 }

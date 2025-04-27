@@ -17,13 +17,14 @@ use elf_loader::{
 };
 use ostd::{
     arch::qemu::{exit_qemu, QemuExitCode},
-    cpu::UserContext,
+    cpu::{CpuSet, PinCurrentCpu, UserContext},
     mm::{
         CachePolicy, FallibleVmRead, FrameAllocOptions, PageFlags, PageProperty,
         PrivilegedPageFlags, VmIo, VmSpace, VmWriter, PAGE_SIZE,
     },
     prelude::*,
-    task::{Task, TaskOptions},
+    smp::inter_processor_call,
+    task::{disable_preempt, Task, TaskOptions},
     user::{UserContextApi, UserMode, UserSpace},
 };
 
@@ -46,6 +47,34 @@ pub fn main() {
     let user_task = create_user_task(vm_space.clone(), entry_point);
     println!("创建用户任务完成，准备运行");
     user_task.run();
+
+    println!("内核主函数完成设置，BSP 进入空闲循环");
+
+    println!("注册 AP 入口函数");
+    ostd::boot::smp::register_ap_entry(ap_main);
+
+    let cpus = CpuSet::new_full();
+    inter_processor_call(&cpus, || {
+        let cpu_id = disable_preempt().current_cpu().as_usize();
+        println!("CPU {} 运行 inter_processor_call", cpu_id);
+    });
+    loop {
+        core::hint::spin_loop();
+        ostd::task::Task::yield_now();
+    }
+}
+
+fn ap_main() {
+    let cpu_id;
+    {
+        let disable_preempt = disable_preempt();
+        cpu_id = disable_preempt.current_cpu().as_usize();
+        println!("AP {} 进入 ap_main 函数，准备进入空闲循环", cpu_id);
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 fn create_vm_space(program: &[u8]) -> (usize, VmSpace) {

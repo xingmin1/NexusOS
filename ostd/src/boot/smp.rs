@@ -45,7 +45,9 @@ static AP_LATE_ENTRY: Once<fn()> = Once::new();
 ///
 /// However, the function need to be called before any `cpu_local!` variables are
 /// accessed, including the APIC instance.
-pub fn boot_all_aps() {
+///
+/// `bsp_hart_id` is the ID of the calling processor (BSP).
+pub fn boot_all_aps(bsp_hart_id: u32) {
     // TODO: support boot protocols without ACPI tables, e.g., Multiboot
     let Some(num_cpus) = get_num_processors() else {
         log::warn!("No processor information found. The kernel operates with a single processor.");
@@ -55,17 +57,24 @@ pub fn boot_all_aps() {
 
     // We currently assumes that bootstrap processor (BSP) have always the
     // processor ID 0. And the processor ID starts from 0 to `num_cpus - 1`.
+    // ^^^ THIS ASSUMPTION IS NO LONGER VALID FOR RISC-V ^^^ We need bsp_hart_id.
 
     AP_BOOT_INFO.call_once(|| {
         let mut per_ap_info = BTreeMap::new();
         // Use two pages to place stack pointers of all APs, thus support up to 1024 APs.
         let boot_stack_array = FrameAllocOptions::new()
-            .zeroed(false)
+            .zeroed(true)
             .alloc_segment_with(2, |_| KernelMeta)
             .unwrap();
         assert!(num_cpus < 1024);
 
-        for ap in 1..num_cpus {
+        // Iterate through all potential hart IDs up to num_cpus
+        for ap_id in 0..num_cpus {
+            // Skip the BSP itself
+            if ap_id == bsp_hart_id {
+                continue;
+            }
+
             let boot_stack_pages = FrameAllocOptions::new()
                 .zeroed(false)
                 .alloc_segment_with(AP_BOOT_STACK_SIZE / PAGE_SIZE, |_| KernelMeta)
@@ -75,11 +84,11 @@ pub fn boot_all_aps() {
             // SAFETY: The `stack_array_ptr` is valid and aligned.
             unsafe {
                 stack_array_ptr
-                    .add(ap as usize)
+                    .add(ap_id as usize)
                     .write_volatile(boot_stack_ptr as u64);
             }
             per_ap_info.insert(
-                ap,
+                ap_id,
                 PerApInfo {
                     is_started: AtomicBool::new(false),
                     boot_stack_pages,
@@ -93,9 +102,13 @@ pub fn boot_all_aps() {
         }
     });
 
-    log::info!("Booting all application processors...");
+    log::info!(
+        "Booting all application processors (except BSP {})...",
+        bsp_hart_id
+    );
+    // Pass BSP ID to architecture-specific bringup function
+    bringup_all_aps(bsp_hart_id);
 
-    bringup_all_aps();
     wait_for_all_aps_started();
 
     log::info!("All application processors started. The BSP continues to run.");
@@ -110,31 +123,16 @@ pub fn register_ap_entry(entry: fn()) {
 }
 
 #[no_mangle]
-fn ap_early_entry(local_apic_id: u32) -> ! {
-    crate::arch::enable_cpu_features();
-
-    // SAFETY: we are on the AP and they are only called once with the correct
-    // CPU ID.
+pub(crate) fn ap_early_entry(ap_hart_id: u32) -> ! {
+    // SAFETY: 在初始化`sscratch`和`stvec`之后，不会在手动修改这些寄存器
     unsafe {
-        cpu::local::init_on_ap(local_apic_id);
-        cpu::set_this_cpu_id(local_apic_id);
+        crate::arch::init_on_ap(ap_hart_id);
     }
 
-    // SAFETY: this function is only called once on this AP.
+    // SAFETY: 我们正在AP上，并且只会使用正确的CPU ID调用一次
     unsafe {
-        crate::arch::trap::init(false);
-    }
-
-    // SAFETY: this function is only called once on this AP, after the BSP has
-    // done the architecture-specific initialization.
-    unsafe {
-        crate::arch::init_on_ap();
-    }
-
-    crate::arch::irq::enable_local();
-
-    // SAFETY: this function is only called once on this AP.
-    unsafe {
+        cpu::local::init_on_ap(ap_hart_id);
+        cpu::set_this_cpu_id(ap_hart_id);
         crate::mm::kspace::activate_kernel_page_table();
     }
 
@@ -142,12 +140,12 @@ fn ap_early_entry(local_apic_id: u32) -> ! {
     let ap_boot_info = AP_BOOT_INFO.get().unwrap();
     ap_boot_info
         .per_ap_info
-        .get(&local_apic_id)
+        .get(&ap_hart_id)
         .unwrap()
         .is_started
         .store(true, Ordering::Release);
 
-    log::info!("Processor {} started. Spinning for tasks.", local_apic_id);
+    log::info!("Processor {} started. Spinning for tasks.", ap_hart_id);
 
     let ap_late_entry = AP_LATE_ENTRY.wait();
     ap_late_entry();
@@ -159,13 +157,20 @@ fn ap_early_entry(local_apic_id: u32) -> ! {
 fn wait_for_all_aps_started() {
     fn is_all_aps_started() -> bool {
         let ap_boot_info = AP_BOOT_INFO.get().unwrap();
-        ap_boot_info
+        // 检查启动的AP数量是否与预期数量匹配
+        let started_count = ap_boot_info
             .per_ap_info
             .values()
-            .all(|info| info.is_started.load(Ordering::Acquire))
+            .filter(|info| info.is_started.load(Ordering::Acquire))
+            .count();
+        // 预期数量是总CPU数量减去1（BSP）
+        let expected_ap_count = ap_boot_info.per_ap_info.len();
+        started_count == expected_ap_count
     }
 
+    log::info!("Waiting for all APs to start...");
     while !is_all_aps_started() {
         core::hint::spin_loop();
     }
+    log::info!("All APs confirmed started.");
 }

@@ -140,32 +140,31 @@ impl<T: 'static + Sync> CpuLocal<T> {
     ///
     /// Panics if the CPU ID is out of range.
     pub fn get_on_cpu(&'static self, cpu_id: CpuId) -> &'static T {
-        super::has_init::assert_true();
+        let target_cpu_id = cpu_id.as_usize() as u32; // Get the target u32 ID
+        let bsp_id = crate::cpu::CpuId::bsp(); // Get the actual BSP ID
 
-        let cpu_id = cpu_id.as_usize();
-
-        // If on the BSP, just use the statically linked storage.
-        if cpu_id == 0 {
+        // If requesting the BSP's value, return the statically linked one.
+        if target_cpu_id == bsp_id.as_usize() as u32 {
             return &self.0;
         }
 
         // SAFETY: Here we use `Once::get_unchecked` to make getting the CPU-
         // local base faster. The storages must be initialized here so it is
         // safe to do so.
-        let base = unsafe {
-            super::CPU_LOCAL_STORAGES
-                .get_unchecked()
-                .get(cpu_id - 1)
-                .unwrap()
-                .start_paddr()
-        };
-        let base = crate::mm::paddr_to_vaddr(base);
+        let ap_areas = unsafe { super::AP_CPU_LOCAL_AREAS.get_unchecked() };
 
+        let ap_segment = ap_areas[target_cpu_id as usize]
+            .as_ref()
+            .unwrap_or_else(|| {
+                panic!("No CPU local area found for requested AP {}", target_cpu_id)
+            });
+
+        let base = crate::mm::paddr_to_vaddr(ap_segment.start_paddr());
         let offset = self.get_offset();
-
         let ptr = (base + offset) as *const T;
 
-        // SAFETY: The pointer is valid since the initialization is completed.
+        // SAFETY: 指针指向特定AP的已分配和初始化区域。
+        // 且在初始化后，区域具有静态生命周期。
         unsafe { &*ptr }
     }
 }

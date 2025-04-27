@@ -29,7 +29,15 @@ use crate::{
 pub struct CpuId(u32);
 
 impl CpuId {
+    /// 返回引导处理器(BSP)的Hart ID。
+    /// 如果在BSP ID确定之前调用会触发panic。
+    #[cfg(target_arch = "riscv64")]
+    pub fn bsp() -> Self {
+        CpuId(crate::arch::boot::bsp_hart_id())
+    }
+
     /// Returns the CPU ID of the bootstrap processor (BSP).
+    #[cfg(target_arch = "x86_64")]
     pub const fn bsp() -> Self {
         CpuId(0)
     }

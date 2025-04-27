@@ -87,9 +87,7 @@ unsafe fn init() {
     mm::dma::init();
 
     arch::init_on_bsp();
-
-    smp::init();
-
+    
     // SAFETY: This function is called only once on the BSP.
     unsafe {
         mm::kspace::activate_kernel_page_table();
@@ -97,7 +95,7 @@ unsafe fn init() {
 
     bus::init();
 
-    arch::irq::enable_local();
+    arch::irq::enable_all_local();
 
     invoke_ffi_init_funcs();
 

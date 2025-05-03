@@ -3,7 +3,7 @@
 use alloc::sync::Arc;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use super::{PreemptDisabled, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use super::{GuardRwLock, PreemptDisabled, RwLockReadGuard, RwLockWriteGuard};
 
 /// A reference-counting pointer with read-write capabilities.
 ///
@@ -17,24 +17,24 @@ use super::{PreemptDisabled, RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// there is only one [`RwArc`] instance for the particular allocation (note that there can be any
 /// number of [`RoArc`] instances for that allocation). See the [`RwArc::get`] method for more
 /// details.
-pub struct RwArc<T>(Arc<Inner<T>>);
+pub struct GuardRwArc<T>(Arc<Inner<T>>);
 
 /// A reference-counting pointer with read-only capabilities.
 ///
 /// This type can be created from an existing [`RwArc`] using its [`RwArc::clone_ro`] method. See
 /// the type and method documentation for more details.
-pub struct RoArc<T>(Arc<Inner<T>>);
+pub struct GuardRoArc<T>(Arc<Inner<T>>);
 
 struct Inner<T> {
-    data: RwLock<T>,
+    data: GuardRwLock<T>,
     num_rw: AtomicUsize,
 }
 
-impl<T> RwArc<T> {
+impl<T> GuardRwArc<T> {
     /// Creates a new `RwArc<T>`.
     pub fn new(data: T) -> Self {
         let inner = Inner {
-            data: RwLock::new(data),
+            data: GuardRwLock::new(data),
             num_rw: AtomicUsize::new(1),
         };
         Self(Arc::new(inner))
@@ -75,12 +75,12 @@ impl<T> RwArc<T> {
     }
 
     /// Clones a [`RoArc`] that points to the same allocation.
-    pub fn clone_ro(&self) -> RoArc<T> {
-        RoArc(self.0.clone())
+    pub fn clone_ro(&self) -> GuardRoArc<T> {
+        GuardRoArc(self.0.clone())
     }
 }
 
-impl<T> Clone for RwArc<T> {
+impl<T> Clone for GuardRwArc<T> {
     fn clone(&self) -> Self {
         let inner = self.0.clone();
 
@@ -92,13 +92,13 @@ impl<T> Clone for RwArc<T> {
     }
 }
 
-impl<T> Drop for RwArc<T> {
+impl<T> Drop for GuardRwArc<T> {
     fn drop(&mut self) {
         self.0.num_rw.fetch_sub(1, Ordering::Release);
     }
 }
 
-impl<T> RoArc<T> {
+impl<T> GuardRoArc<T> {
     /// Acquires the read lock for immutable access.
     pub fn read(&self) -> RwLockReadGuard<T, PreemptDisabled> {
         self.0.data.read()
@@ -112,7 +112,7 @@ mod test {
 
     #[ktest]
     fn lockless_get() {
-        let mut rw1 = RwArc::new(1u32);
+        let mut rw1 = GuardRwArc::new(1u32);
         assert_eq!(rw1.get(), Some(1).as_ref());
 
         let _ro = rw1.clone_ro();

@@ -13,7 +13,7 @@ use super::paddr_to_vaddr;
 use crate::{
     mm::{frame::allocator::FRAME_ALLOCATOR, PAGE_SIZE},
     prelude::*,
-    sync::SpinLock,
+    sync::GuardSpinLock,
     trap::disable_local,
     Error,
 };
@@ -46,7 +46,7 @@ pub unsafe fn init() {
 }
 
 struct LockedHeapWithRescue {
-    heap: Once<SpinLock<Heap>>,
+    heap: Once<GuardSpinLock<Heap>>,
 }
 
 impl LockedHeapWithRescue {
@@ -58,7 +58,7 @@ impl LockedHeapWithRescue {
     /// SAFETY: The range [start, start + size) must be a valid memory region.
     pub unsafe fn init(&self, start: *mut u8, size: usize) {
         self.heap
-            .call_once(|| SpinLock::new(Heap::new(start as usize, size)));
+            .call_once(|| GuardSpinLock::new(Heap::new(start as usize, size)));
     }
 
     /// SAFETY: The range [start, start + size) must be a valid memory region.

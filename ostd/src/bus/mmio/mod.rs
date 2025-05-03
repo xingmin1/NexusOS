@@ -8,15 +8,11 @@ pub mod bus;
 pub mod common_device;
 
 use alloc::vec::Vec;
-use core::ops::Range;
 
 use cfg_if::cfg_if;
-use log::debug;
 
 use self::bus::MmioBus;
-use crate::{
-    bus::mmio::common_device::MmioCommonDevice, mm::paddr_to_vaddr, sync::SpinLock, trap::IrqLine,
-};
+use crate::{sync::GuardSpinLock, trap::IrqLine};
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))] {
@@ -28,8 +24,8 @@ cfg_if! {
 const VIRTIO_MMIO_MAGIC: u32 = 0x74726976;
 
 /// MMIO bus instance
-pub static MMIO_BUS: SpinLock<MmioBus> = SpinLock::new(MmioBus::new());
-static IRQS: SpinLock<Vec<IrqLine>> = SpinLock::new(Vec::new());
+pub static MMIO_BUS: GuardSpinLock<MmioBus> = GuardSpinLock::new(MmioBus::new());
+static IRQS: GuardSpinLock<Vec<IrqLine>> = GuardSpinLock::new(Vec::new());
 
 pub(crate) fn init() {
     #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))]

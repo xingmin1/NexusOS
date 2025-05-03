@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! CPU
+#![allow(missing_docs)]
 
 pub mod local;
 
@@ -12,9 +13,10 @@ use riscv::{
 };
 
 pub use super::trap::GeneralRegs as RawGeneralRegs;
-use super::trap::{TrapFrame, UserContext as RawUserContext};
+use super::trap::{handle_interrupt, TrapFrame, UserContext as RawUserContext};
 use crate::{
     early_println,
+    task::scheduler,
     user::{ReturnReason, UserContextApi, UserContextApiInternal},
 };
 
@@ -51,8 +53,9 @@ pub struct UserContext {
 pub struct CpuExceptionInfo {
     /// The type of the exception.
     pub code: Exception,
-    /// The error code associated with the exception.
+    /// The address of the page fault.
     pub page_fault_addr: usize,
+    /// The error code associated with the exception.
     pub error_code: usize, // TODO
 }
 
@@ -127,14 +130,17 @@ impl UserContext {
 }
 
 impl UserContextApiInternal for UserContext {
-    fn execute<F>(&mut self, mut has_kernel_event: F) -> ReturnReason
+    async fn execute<F>(&mut self, mut has_kernel_event: F) -> ReturnReason
     where
         F: FnMut() -> bool,
     {
         let ret = loop {
+            scheduler::might_preempt().await;
             self.user_context.run();
             match riscv::interrupt::cause::<Interrupt, Exception>() {
-                Trap::Interrupt(_) => todo!(),
+                Trap::Interrupt(interrupt) => {
+                    handle_interrupt(interrupt, &mut self.as_trap_frame());
+                }
                 Trap::Exception(Exception::UserEnvCall) => {
                     self.user_context.sepc += 4;
                     break ReturnReason::UserSyscall;
@@ -252,3 +258,16 @@ cpu_context_impl_getter_setter!(
 
 /// CPU exception.
 pub type CpuException = Exception;
+
+/// 在自旋循环中等待中断发生。
+///
+/// 函数内部会执行以下操作：
+/// 1. 启用 Supervisor 模式下的中断（设置 `sstatus.sie` 标志位）
+/// 2. 执行 `wfi` 指令进入低功耗等待状态，直到中断发生
+#[inline(always)]
+pub fn wait_for_interrupt() {
+    unsafe {
+        riscv::register::sstatus::set_sie(); // 启用 Supervisor 中断
+        riscv::asm::wfi(); // 等待中断指令
+    }
+}

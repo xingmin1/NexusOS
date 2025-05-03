@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use alloc::{sync::Arc, vec};
-use core::str;
+use core::{future::Future, str};
 
 use align_ext::AlignExt;
 use elf_loader::{
@@ -25,7 +25,7 @@ use ostd::{
     prelude::*,
     smp::inter_processor_call,
     task::{disable_preempt, Task, TaskOptions},
-    user::{UserContextApi, UserMode, UserSpace},
+    user::{ReturnReason, UserContextApi, UserMode, UserSpace},
 };
 
 /// The kernel's boot and initialization process is managed by OSTD.
@@ -44,10 +44,13 @@ pub fn main() {
 
     let vm_space = Arc::new(vm_space);
     println!("创建虚拟内存空间完成");
-    let user_task = create_user_task(vm_space.clone(), entry_point);
+    let (user_task_1, task_future_1) = create_user_task(vm_space.clone(), entry_point, 3);
+    let (user_task_2, task_future_2) = create_user_task(vm_space.clone(), entry_point, 5);
     println!("创建用户任务完成，准备运行");
-    user_task.run();
-
+    let mut core = ostd::task::scheduler::Core::new();
+    // TODO: 使run消耗Task而不是Arc<Task>，这里不需要Arc<Task>
+    user_task_1.run(task_future_1);
+    user_task_2.run(task_future_2);
     println!("内核主函数完成设置，BSP 进入空闲循环");
 
     println!("注册 AP 入口函数");
@@ -58,13 +61,11 @@ pub fn main() {
         let cpu_id = disable_preempt().current_cpu().as_usize();
         println!("CPU {} 运行 inter_processor_call", cpu_id);
     });
-    loop {
-        core::hint::spin_loop();
-        ostd::task::Task::yield_now();
-    }
+
+    core.run();
 }
 
-fn ap_main() {
+fn ap_main() -> ! {
     let cpu_id;
     {
         let disable_preempt = disable_preempt();
@@ -72,9 +73,9 @@ fn ap_main() {
         println!("AP {} 进入 ap_main 函数，准备进入空闲循环", cpu_id);
     }
 
-    loop {
-        core::hint::spin_loop();
-    }
+    let mut core = ostd::task::scheduler::Core::new();
+    core.run();
+    unreachable!()
 }
 
 fn create_vm_space(program: &[u8]) -> (usize, VmSpace) {
@@ -179,7 +180,11 @@ fn create_vm_space(program: &[u8]) -> (usize, VmSpace) {
     (entry_point, vm_space)
 }
 
-fn create_user_task(vm_space: Arc<VmSpace>, entry_point: usize) -> Arc<Task> {
+fn create_user_task(
+    vm_space: Arc<VmSpace>,
+    entry_point: usize,
+    sleep_secs: u64,
+) -> (Arc<Task>, impl Future + 'static + Send) {
     println!("开始创建用户任务");
 
     // 创建用户上下文，使用ELF的真实入口点
@@ -194,38 +199,7 @@ fn create_user_task(vm_space: Arc<VmSpace>, entry_point: usize) -> Arc<Task> {
         vm_space: Arc<VmSpace>,
     }
 
-    // 在创建闭包前克隆user_space
-    let user_space_clone = Arc::clone(&user_space);
-
     // 创建任务闭包，避免捕获外部的vm_space
-    let user_task = move || {
-        println!("用户任务开始执行");
-        let current = Task::current().unwrap();
-        let task_data = current.data().downcast_ref::<TaskData>().unwrap();
-
-        // vm_space_clone.print_page_table(false);
-
-        let mut user_mode = UserMode::new(&user_space_clone);
-        println!("创建用户模式完成，准备进入用户空间");
-
-        loop {
-            // The execute method returns when system
-            // calls or CPU exceptions occur or some
-            // events specified by the kernel occur.
-            println!("准备切换到用户空间执行");
-            let return_reason = user_mode.execute(|| false);
-            println!("从用户空间返回，原因: {:?}", return_reason);
-
-            // The CPU registers of the user space
-            // can be accessed and manipulated via
-            // the `UserContext` abstraction.
-            let user_context = user_mode.context_mut();
-            // if ReturnReason::UserSyscall == return_reason {
-            println!("处理系统调用，系统调用号: {}", user_context.a7());
-            handle_syscall(user_context, &task_data.vm_space);
-            // }
-        }
-    };
 
     // 创建任务数据
     let task_data = TaskData { vm_space };
@@ -234,13 +208,50 @@ fn create_user_task(vm_space: Arc<VmSpace>, entry_point: usize) -> Arc<Task> {
     // while scheduling algorithms for them can be
     // determined by the users of the Framework.
     println!("构建用户任务");
-    Arc::new(
-        TaskOptions::new(user_task)
+    let task = Arc::new(
+        TaskOptions::new()
             .data(task_data)
             .user_space(Some(user_space))
-            .build()
-            .unwrap(),
-    )
+            .build(),
+    );
+
+    let current = task.clone();
+    let task_future = async move {
+        {
+            let disable_preempt = disable_preempt();
+            let cpu_id = disable_preempt.current_cpu().as_usize();
+            println!("用户任务开始在CPU {} 上执行", cpu_id);
+        }
+        let task_data = current.data().downcast_ref::<TaskData>().unwrap();
+
+        // 测试sleep
+        println!("测试并开始sleep");
+        ostd::task::sleep(ostd::task::Duration::from_secs(sleep_secs)).await;
+        println!("sleep完成");
+        // vm_space_clone.print_page_table(false);
+        let user_space = current.user_space().unwrap();
+        let mut user_mode = UserMode::new(user_space);
+        println!("创建用户模式完成，准备进入用户空间");
+
+        loop {
+            // The execute method returns when system
+            // calls or CPU exceptions occur or some
+            // events specified by the kernel occur.
+            println!("准备切换到用户空间执行");
+            let return_reason = user_mode.execute(|| false).await;
+            println!("从用户空间返回，原因: {:?}", return_reason);
+
+            // The CPU registers of the user space
+            // can be accessed and manipulated via
+            // the `UserContext` abstraction.
+            let user_context = user_mode.context_mut();
+            if ReturnReason::UserSyscall == return_reason {
+                println!("处理系统调用，系统调用号: {}", user_context.a7());
+                handle_syscall(user_context, &task_data.vm_space);
+            }
+        }
+    };
+    (task, task_future)
 }
 
 fn create_user_context(entry_point: usize) -> UserContext {

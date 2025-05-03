@@ -13,7 +13,7 @@ use crate::{
     error::Error,
     mm::{paddr_to_vaddr, Paddr, PAGE_SIZE},
     prelude::*,
-    sync::SpinLock,
+    sync::GuardSpinLock,
 };
 
 /// Options for allocating physical memory frames.
@@ -182,7 +182,7 @@ impl CountingFrameAllocator {
     }
 }
 
-pub(in crate::mm) static FRAME_ALLOCATOR: Once<SpinLock<CountingFrameAllocator>> = Once::new();
+pub(in crate::mm) static FRAME_ALLOCATOR: Once<GuardSpinLock<CountingFrameAllocator>> = Once::new();
 
 pub(crate) fn init() {
     let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
@@ -208,5 +208,5 @@ pub(crate) fn init() {
         }
     }
     let counting_allocator = CountingFrameAllocator::new(allocator, total);
-    FRAME_ALLOCATOR.call_once(|| SpinLock::new(counting_allocator));
+    FRAME_ALLOCATOR.call_once(|| GuardSpinLock::new(counting_allocator));
 }

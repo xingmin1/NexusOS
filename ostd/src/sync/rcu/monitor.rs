@@ -9,14 +9,14 @@ use core::sync::atomic::{
 use crate::{
     cpu::{AtomicCpuSet, CpuId, CpuSet, PinCurrentCpu},
     prelude::*,
-    sync::SpinLock,
+    sync::GuardSpinLock,
 };
 
 /// A RCU monitor ensures the completion of _grace periods_ by keeping track
 /// of each CPU's passing _quiescent states_.
 pub struct RcuMonitor {
     is_monitoring: AtomicBool,
-    state: SpinLock<State>,
+    state: GuardSpinLock<State>,
 }
 
 impl RcuMonitor {
@@ -27,7 +27,7 @@ impl RcuMonitor {
     pub fn new() -> Self {
         Self {
             is_monitoring: AtomicBool::new(false),
-            state: SpinLock::new(State::new()),
+            state: GuardSpinLock::new(State::new()),
         }
     }
 

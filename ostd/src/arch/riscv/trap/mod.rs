@@ -69,30 +69,7 @@ extern "C" fn trap_handler(f: &mut TrapFrame) {
     match riscv::interrupt::cause::<Interrupt, Exception>() {
         Trap::Interrupt(interrupt) => {
             IS_KERNEL_INTERRUPTED.store(true);
-            match interrupt {
-                Interrupt::SupervisorSoft => {
-                    let guard: crate::trap::DisabledLocalIrqGuard = disable_local();
-                    log::trace!("Supervisor Software Interrupt");
-                    unsafe {
-                        riscv::register::sip::clear_ssoft();
-                    }
-
-                    let cpu_local_deref_guard = crate::arch::irq::CPU_IPI_QUEUES.get_with(&guard);
-                    let cpi_ipi_queue = cpu_local_deref_guard.get().expect("CPU_IPI_QUEUES is not initialized");
-
-                    while let Some(irq_num) = cpi_ipi_queue.pop() {
-                        log::trace!("Supervisor Software Interrupt: {}", irq_num);
-                        crate::trap::call_irq_callback_functions(f, irq_num as usize);
-                    }
-                    log::trace!("Supervisor Software Interrupt end");
-                }
-                Interrupt::SupervisorTimer => {
-                    crate::arch::timer::time_interrupt_handler(f);
-                }
-                Interrupt::SupervisorExternal => {
-                    log::trace!("Supervisor External Interrupt");
-                }
-            }
+            handle_interrupt(interrupt, f);
             IS_KERNEL_INTERRUPTED.store(false);
         }
         Trap::Exception(e) => {
@@ -180,6 +157,35 @@ extern "C" fn trap_handler(f: &mut TrapFrame) {
                     f.sepc += 4;
                 }
             }
+        }
+    }
+}
+
+pub(crate) fn handle_interrupt(interrupt: Interrupt, f: &mut TrapFrame) {
+    match interrupt {
+        Interrupt::SupervisorSoft => {
+            let guard: crate::trap::DisabledLocalIrqGuard = disable_local();
+            log::trace!("Supervisor Software Interrupt");
+            unsafe {
+                riscv::register::sip::clear_ssoft();
+            }
+
+            let cpu_local_deref_guard = crate::arch::irq::CPU_IPI_QUEUES.get_with(&guard);
+            let cpi_ipi_queue = cpu_local_deref_guard
+                .get()
+                .expect("CPU_IPI_QUEUES is not initialized");
+
+            while let Some(irq_num) = cpi_ipi_queue.pop() {
+                log::trace!("Supervisor Software Interrupt: {}", irq_num);
+                crate::trap::call_irq_callback_functions(f, irq_num as usize);
+            }
+            log::trace!("Supervisor Software Interrupt end");
+        }
+        Interrupt::SupervisorTimer => {
+            crate::arch::timer::time_interrupt_handler();
+        }
+        Interrupt::SupervisorExternal => {
+            log::trace!("Supervisor External Interrupt");
         }
     }
 }

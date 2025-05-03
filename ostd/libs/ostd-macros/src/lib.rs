@@ -32,8 +32,7 @@ pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
         extern "Rust" fn __ostd_main() -> ! {
             let _: () = #main_fn_name();
 
-            ostd::task::Task::yield_now();
-            unreachable!("`yield_now` in the boot context should not return");
+            unreachable!("Kernel `main` function in the boot context should not return");
         }
 
         #[expect(unused)]

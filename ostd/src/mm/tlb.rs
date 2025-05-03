@@ -12,7 +12,7 @@ use super::{
 use crate::{
     cpu::{CpuSet, PinCurrentCpu},
     cpu_local,
-    sync::{LocalIrqDisabled, SpinLock},
+    sync::{LocalIrqDisabled, GuardSpinLock},
     task::disable_preempt,
 };
 
@@ -158,8 +158,8 @@ impl TlbFlushOp {
 //
 // Lock ordering: lock FLUSH_OPS before PAGE_KEEPER.
 cpu_local! {
-    static FLUSH_OPS: SpinLock<OpsStack, LocalIrqDisabled> = SpinLock::new(OpsStack::new());
-    static PAGE_KEEPER: SpinLock<Vec<Frame<dyn AnyFrameMeta>>, LocalIrqDisabled> = SpinLock::new(Vec::new());
+    static FLUSH_OPS: GuardSpinLock<OpsStack, LocalIrqDisabled> = GuardSpinLock::new(OpsStack::new());
+    static PAGE_KEEPER: GuardSpinLock<Vec<Frame<dyn AnyFrameMeta>>, LocalIrqDisabled> = GuardSpinLock::new(Vec::new());
 }
 
 fn do_remote_flush() {

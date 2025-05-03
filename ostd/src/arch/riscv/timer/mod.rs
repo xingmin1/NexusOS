@@ -6,7 +6,6 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use spin::Once;
 
-use super::trap::TrapFrame;
 use crate::{
     arch::boot::DEVICE_TREE, io_mem::IoMem, timer::INTERRUPT_CALLBACKS, trap::disable_local,
 };
@@ -58,6 +57,13 @@ pub(super) fn init() {
         };
         GOLDFISH_IO_MEM.call_once(|| io_mem);
     }
+    // 每个tick的纳秒数 = 每秒的纳秒数 / 每秒的tick数
+    let tick_duration = 1_000_000_000 / timer_freq;
+    let clock = maitake::time::Clock::new(
+        maitake::time::Duration::from_nanos(tick_duration),
+        riscv::register::time::read64,
+    );
+    crate::task::scheduler::init(clock);
     set_next_timer();
 }
 
@@ -69,7 +75,7 @@ pub(crate) fn set_next_timer() {
     );
 }
 
-pub(crate) fn time_interrupt_handler(_: &TrapFrame) {
+pub(crate) fn time_interrupt_handler() {
     crate::timer::jiffies::ELAPSED.fetch_add(1, Ordering::SeqCst);
 
     let irq_guard = disable_local();

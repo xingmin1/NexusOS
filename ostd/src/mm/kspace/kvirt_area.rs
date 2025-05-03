@@ -17,7 +17,7 @@ use crate::{
         tlb::{TlbFlushOp, TlbFlusher, FLUSH_ALL_RANGE_THRESHOLD},
         Paddr, Vaddr, PAGE_SIZE,
     },
-    sync::SpinLock,
+    sync::GuardSpinLock,
     task::disable_preempt,
     Error, Result,
 };
@@ -34,14 +34,14 @@ impl KVirtAreaFreeNode {
 
 pub struct VirtAddrAllocator {
     fullrange: Range<Vaddr>,
-    freelist: SpinLock<Option<BTreeMap<Vaddr, KVirtAreaFreeNode>>>,
+    freelist: GuardSpinLock<Option<BTreeMap<Vaddr, KVirtAreaFreeNode>>>,
 }
 
 impl VirtAddrAllocator {
     const fn new(fullrange: Range<Vaddr>) -> Self {
         Self {
             fullrange,
-            freelist: SpinLock::new(None),
+            freelist: GuardSpinLock::new(None),
         }
     }
 

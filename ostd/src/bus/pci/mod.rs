@@ -59,10 +59,11 @@ mod device_info;
 pub use device_info::{PciDeviceId, PciDeviceLocation};
 
 use self::{bus::PciBus, common_device::PciCommonDevice};
-use crate::sync::Mutex;
+use crate::sync::{blocking::Mutex, spin::Spinlock};
 
 /// PCI bus instance
-pub static PCI_BUS: Mutex<PciBus> = Mutex::new(PciBus::new());
+pub static PCI_BUS: Mutex<PciBus, Spinlock> =
+    Mutex::new_with_raw_mutex(PciBus::new(), Spinlock::new());
 
 pub(crate) fn init() {
     let mut lock = PCI_BUS.lock();

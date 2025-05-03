@@ -97,7 +97,7 @@ use super::{
 /// ```
 ///
 /// [`SpinLock`]: super::SpinLock
-pub struct RwLock<T: ?Sized, Guard = PreemptDisabled> {
+pub struct GuardRwLock<T: ?Sized, Guard = PreemptDisabled> {
     guard: PhantomData<Guard>,
     /// The internal representation of the lock state is as follows:
     /// - **Bit 63:** Writer lock.
@@ -114,7 +114,7 @@ const UPGRADEABLE_READER: usize = 1 << (usize::BITS - 2);
 const BEING_UPGRADED: usize = 1 << (usize::BITS - 3);
 const MAX_READER: usize = 1 << (usize::BITS - 4);
 
-impl<T, G> RwLock<T, G> {
+impl<T, G> GuardRwLock<T, G> {
     /// Creates a new spin-based read-write lock with an initial value.
     pub const fn new(val: T) -> Self {
         Self {
@@ -125,7 +125,7 @@ impl<T, G> RwLock<T, G> {
     }
 }
 
-impl<T: ?Sized, G: Guardian> RwLock<T, G> {
+impl<T: ?Sized, G: Guardian> GuardRwLock<T, G> {
     /// Acquires a read lock and spin-wait until it can be acquired.
     ///
     /// The calling thread will spin-wait until there are no writers or
@@ -349,7 +349,7 @@ impl<T: ?Sized, G: Guardian> RwLock<T, G> {
     }
 }
 
-impl<T: ?Sized + fmt::Debug, G> fmt::Debug for RwLock<T, G> {
+impl<T: ?Sized + fmt::Debug, G> fmt::Debug for GuardRwLock<T, G> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self.val, f)
     }
@@ -357,32 +357,32 @@ impl<T: ?Sized + fmt::Debug, G> fmt::Debug for RwLock<T, G> {
 
 /// Because there can be more than one readers to get the T's immutable ref,
 /// so T must be Sync to guarantee the sharing safety.
-unsafe impl<T: ?Sized + Send, G> Send for RwLock<T, G> {}
-unsafe impl<T: ?Sized + Send + Sync, G> Sync for RwLock<T, G> {}
+unsafe impl<T: ?Sized + Send, G> Send for GuardRwLock<T, G> {}
+unsafe impl<T: ?Sized + Send + Sync, G> Sync for GuardRwLock<T, G> {}
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> !Send
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> !Send
     for RwLockWriteGuard_<T, R, G>
 {
 }
-unsafe impl<T: ?Sized + Sync, R: Deref<Target = RwLock<T, G>> + Clone + Sync, G: Guardian> Sync
+unsafe impl<T: ?Sized + Sync, R: Deref<Target = GuardRwLock<T, G>> + Clone + Sync, G: Guardian> Sync
     for RwLockWriteGuard_<T, R, G>
 {
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> !Send
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> !Send
     for RwLockReadGuard_<T, R, G>
 {
 }
-unsafe impl<T: ?Sized + Sync, R: Deref<Target = RwLock<T, G>> + Clone + Sync, G: Guardian> Sync
+unsafe impl<T: ?Sized + Sync, R: Deref<Target = GuardRwLock<T, G>> + Clone + Sync, G: Guardian> Sync
     for RwLockReadGuard_<T, R, G>
 {
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> !Send
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> !Send
     for RwLockUpgradeableGuard_<T, R, G>
 {
 }
-unsafe impl<T: ?Sized + Sync, R: Deref<Target = RwLock<T, G>> + Clone + Sync, G: Guardian> Sync
+unsafe impl<T: ?Sized + Sync, R: Deref<Target = GuardRwLock<T, G>> + Clone + Sync, G: Guardian> Sync
     for RwLockUpgradeableGuard_<T, R, G>
 {
 }
@@ -390,18 +390,18 @@ unsafe impl<T: ?Sized + Sync, R: Deref<Target = RwLock<T, G>> + Clone + Sync, G:
 /// A guard that provides immutable data access.
 #[clippy::has_significant_drop]
 #[must_use]
-pub struct RwLockReadGuard_<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> {
+pub struct RwLockReadGuard_<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> {
     guard: G::ReadGuard,
     inner: R,
 }
 
 /// A guard that provides shared read access to the data protected by a [`RwLock`].
-pub type RwLockReadGuard<'a, T, G> = RwLockReadGuard_<T, &'a RwLock<T, G>, G>;
+pub type RwLockReadGuard<'a, T, G> = RwLockReadGuard_<T, &'a GuardRwLock<T, G>, G>;
 
 /// A guard that provides shared read access to the data protected by a `Arc<RwLock>`.
-pub type ArcRwLockReadGuard<T, G> = RwLockReadGuard_<T, Arc<RwLock<T, G>>, G>;
+pub type ArcRwLockReadGuard<T, G> = RwLockReadGuard_<T, Arc<GuardRwLock<T, G>>, G>;
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Deref
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> Deref
     for RwLockReadGuard_<T, R, G>
 {
     type Target = T;
@@ -411,7 +411,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Deref
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Drop
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> Drop
     for RwLockReadGuard_<T, R, G>
 {
     fn drop(&mut self) {
@@ -419,7 +419,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Drop
     }
 }
 
-impl<T: ?Sized + fmt::Debug, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> fmt::Debug
+impl<T: ?Sized + fmt::Debug, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> fmt::Debug
     for RwLockReadGuard_<T, R, G>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -428,17 +428,17 @@ impl<T: ?Sized + fmt::Debug, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardia
 }
 
 /// A guard that provides mutable data access.
-pub struct RwLockWriteGuard_<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> {
+pub struct RwLockWriteGuard_<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> {
     guard: G::Guard,
     inner: R,
 }
 
 /// A guard that provides exclusive write access to the data protected by a [`RwLock`].
-pub type RwLockWriteGuard<'a, T, G> = RwLockWriteGuard_<T, &'a RwLock<T, G>, G>;
+pub type RwLockWriteGuard<'a, T, G> = RwLockWriteGuard_<T, &'a GuardRwLock<T, G>, G>;
 /// A guard that provides exclusive write access to the data protected by a `Arc<RwLock>`.
-pub type ArcRwLockWriteGuard<T, G> = RwLockWriteGuard_<T, Arc<RwLock<T, G>>, G>;
+pub type ArcRwLockWriteGuard<T, G> = RwLockWriteGuard_<T, Arc<GuardRwLock<T, G>>, G>;
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Deref
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> Deref
     for RwLockWriteGuard_<T, R, G>
 {
     type Target = T;
@@ -448,7 +448,9 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Deref
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> RwLockWriteGuard_<T, R, G> {
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian>
+    RwLockWriteGuard_<T, R, G>
+{
     /// Atomically downgrades a write guard to an upgradeable reader guard.
     ///
     /// This method always succeeds because the lock is exclusively held by the writer.
@@ -479,7 +481,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> RwLockWrit
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> DerefMut
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> DerefMut
     for RwLockWriteGuard_<T, R, G>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -487,7 +489,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> DerefMut
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Drop
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> Drop
     for RwLockWriteGuard_<T, R, G>
 {
     fn drop(&mut self) {
@@ -495,7 +497,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Drop
     }
 }
 
-impl<T: ?Sized + fmt::Debug, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> fmt::Debug
+impl<T: ?Sized + fmt::Debug, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> fmt::Debug
     for RwLockWriteGuard_<T, R, G>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -505,18 +507,21 @@ impl<T: ?Sized + fmt::Debug, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardia
 
 /// A guard that provides immutable data access but can be atomically
 /// upgraded to `RwLockWriteGuard`.
-pub struct RwLockUpgradeableGuard_<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian>
-{
+pub struct RwLockUpgradeableGuard_<
+    T: ?Sized,
+    R: Deref<Target = GuardRwLock<T, G>> + Clone,
+    G: Guardian,
+> {
     guard: G::Guard,
     inner: R,
 }
 
 /// A upgradable guard that provides read access to the data protected by a [`RwLock`].
-pub type RwLockUpgradeableGuard<'a, T, G> = RwLockUpgradeableGuard_<T, &'a RwLock<T, G>, G>;
+pub type RwLockUpgradeableGuard<'a, T, G> = RwLockUpgradeableGuard_<T, &'a GuardRwLock<T, G>, G>;
 /// A upgradable guard that provides read access to the data protected by a `Arc<RwLock>`.
-pub type ArcRwLockUpgradeableGuard<T, G> = RwLockUpgradeableGuard_<T, Arc<RwLock<T, G>>, G>;
+pub type ArcRwLockUpgradeableGuard<T, G> = RwLockUpgradeableGuard_<T, Arc<GuardRwLock<T, G>>, G>;
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian>
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian>
     RwLockUpgradeableGuard_<T, R, G>
 {
     /// Upgrades this upread guard to a write guard atomically.
@@ -554,7 +559,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian>
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Deref
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> Deref
     for RwLockUpgradeableGuard_<T, R, G>
 {
     type Target = T;
@@ -564,7 +569,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Deref
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Drop
+impl<T: ?Sized, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> Drop
     for RwLockUpgradeableGuard_<T, R, G>
 {
     fn drop(&mut self) {
@@ -572,7 +577,7 @@ impl<T: ?Sized, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> Drop
     }
 }
 
-impl<T: ?Sized + fmt::Debug, R: Deref<Target = RwLock<T, G>> + Clone, G: Guardian> fmt::Debug
+impl<T: ?Sized + fmt::Debug, R: Deref<Target = GuardRwLock<T, G>> + Clone, G: Guardian> fmt::Debug
     for RwLockUpgradeableGuard_<T, R, G>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

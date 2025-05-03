@@ -25,7 +25,7 @@ use crate::{
         PageProperty, UFrame, VmReader, VmWriter, MAX_USERSPACE_VADDR,
     },
     prelude::*,
-    sync::{PreemptDisabled, RwLock, RwLockReadGuard},
+    sync::{GuardRwLock, PreemptDisabled, RwLockReadGuard},
     task::{disable_preempt, DisabledPreemptGuard},
     Error,
 };
@@ -51,7 +51,7 @@ pub struct VmSpace {
     page_fault_handler: Option<fn(&VmSpace, &CpuExceptionInfo) -> core::result::Result<(), ()>>,
     /// A CPU can only activate a `VmSpace` when no mutable cursors are alive.
     /// Cursors hold read locks and activation require a write lock.
-    activation_lock: RwLock<()>,
+    activation_lock: GuardRwLock<()>,
     cpus: AtomicCpuSet,
 }
 
@@ -61,7 +61,7 @@ impl VmSpace {
         Self {
             pt: KERNEL_PAGE_TABLE.get().unwrap().create_user_page_table(),
             page_fault_handler: None,
-            activation_lock: RwLock::new(()),
+            activation_lock: GuardRwLock::new(()),
             cpus: AtomicCpuSet::new(CpuSet::new_empty()),
         }
     }

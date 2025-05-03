@@ -27,7 +27,7 @@ use super::{guard::Guardian, LocalIrqDisabled, PreemptDisabled};
 ///
 /// [`disable_irq`]: Self::disable_irq
 #[repr(transparent)]
-pub struct SpinLock<T: ?Sized, G = PreemptDisabled> {
+pub struct GuardSpinLock<T: ?Sized, G = PreemptDisabled> {
     phantom: PhantomData<G>,
     /// Only the last field of a struct may have a dynamically sized type.
     /// That's why SpinLockInner is put in the last field.
@@ -39,7 +39,7 @@ struct SpinLockInner<T: ?Sized> {
     val: UnsafeCell<T>,
 }
 
-impl<T, G> SpinLock<T, G> {
+impl<T, G> GuardSpinLock<T, G> {
     /// Creates a new spin lock.
     pub const fn new(val: T) -> Self {
         let lock_inner = SpinLockInner {
@@ -53,11 +53,11 @@ impl<T, G> SpinLock<T, G> {
     }
 }
 
-impl<T: ?Sized> SpinLock<T, PreemptDisabled> {
+impl<T: ?Sized> GuardSpinLock<T, PreemptDisabled> {
     /// Converts the guard behavior from disabling preemption to disabling IRQs.
-    pub fn disable_irq(&self) -> &SpinLock<T, LocalIrqDisabled> {
-        let ptr = self as *const SpinLock<T, PreemptDisabled>;
-        let ptr = ptr as *const SpinLock<T, LocalIrqDisabled>;
+    pub fn disable_irq(&self) -> &GuardSpinLock<T, LocalIrqDisabled> {
+        let ptr = self as *const GuardSpinLock<T, PreemptDisabled>;
+        let ptr = ptr as *const GuardSpinLock<T, LocalIrqDisabled>;
         // SAFETY:
         // 1. The types `SpinLock<T, PreemptDisabled>`, `SpinLockInner<T>` and `SpinLock<T,
         //    IrqDisabled>` have the same memory layout guaranteed by `#[repr(transparent)]`.
@@ -67,7 +67,7 @@ impl<T: ?Sized> SpinLock<T, PreemptDisabled> {
     }
 }
 
-impl<T: ?Sized, G: Guardian> SpinLock<T, G> {
+impl<T: ?Sized, G: Guardian> GuardSpinLock<T, G> {
     /// Acquires the spin lock.
     pub fn lock(&self) -> SpinLockGuard<T, G> {
         // Notice the guard must be created before acquiring the lock.
@@ -134,37 +134,39 @@ impl<T: ?Sized, G: Guardian> SpinLock<T, G> {
     }
 }
 
-impl<T: ?Sized + fmt::Debug, G> fmt::Debug for SpinLock<T, G> {
+impl<T: ?Sized + fmt::Debug, G> fmt::Debug for GuardSpinLock<T, G> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self.inner.val, f)
     }
 }
 
 // SAFETY: Only a single lock holder is permitted to access the inner data of Spinlock.
-unsafe impl<T: ?Sized + Send, G> Send for SpinLock<T, G> {}
-unsafe impl<T: ?Sized + Send, G> Sync for SpinLock<T, G> {}
+unsafe impl<T: ?Sized + Send, G> Send for GuardSpinLock<T, G> {}
+unsafe impl<T: ?Sized + Send, G> Sync for GuardSpinLock<T, G> {}
 
 /// A guard that provides exclusive access to the data protected by a [`SpinLock`].
-pub type SpinLockGuard<'a, T, G> = SpinLockGuard_<T, &'a SpinLock<T, G>, G>;
+pub type SpinLockGuard<'a, T, G> = SpinLockGuard_<T, &'a GuardSpinLock<T, G>, G>;
 /// A guard that provides exclusive access to the data protected by a `Arc<SpinLock>`.
-pub type ArcSpinLockGuard<T, G> = SpinLockGuard_<T, Arc<SpinLock<T, G>>, G>;
+pub type ArcSpinLockGuard<T, G> = SpinLockGuard_<T, Arc<GuardSpinLock<T, G>>, G>;
 
 /// The guard of a spin lock.
 #[clippy::has_significant_drop]
 #[must_use]
-pub struct SpinLockGuard_<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> {
+pub struct SpinLockGuard_<T: ?Sized, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> {
     guard: G::Guard,
     lock: R,
 }
 
-impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> SpinLockGuard_<T, R, G> {
+impl<T: ?Sized, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> SpinLockGuard_<T, R, G> {
     /// Returns a reference to the guard.
     pub fn guard(&self) -> &G::Guard {
         &self.guard
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> Deref for SpinLockGuard_<T, R, G> {
+impl<T: ?Sized, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> Deref
+    for SpinLockGuard_<T, R, G>
+{
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -172,7 +174,7 @@ impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> Deref for SpinLo
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> DerefMut
+impl<T: ?Sized, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> DerefMut
     for SpinLockGuard_<T, R, G>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -180,13 +182,15 @@ impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> DerefMut
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> Drop for SpinLockGuard_<T, R, G> {
+impl<T: ?Sized, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> Drop
+    for SpinLockGuard_<T, R, G>
+{
     fn drop(&mut self) {
         self.lock.release_lock();
     }
 }
 
-impl<T: ?Sized + fmt::Debug, R: Deref<Target = SpinLock<T, G>>, G: Guardian> fmt::Debug
+impl<T: ?Sized + fmt::Debug, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> fmt::Debug
     for SpinLockGuard_<T, R, G>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -194,11 +198,14 @@ impl<T: ?Sized + fmt::Debug, R: Deref<Target = SpinLock<T, G>>, G: Guardian> fmt
     }
 }
 
-impl<T: ?Sized, R: Deref<Target = SpinLock<T, G>>, G: Guardian> !Send for SpinLockGuard_<T, R, G> {}
+impl<T: ?Sized, R: Deref<Target = GuardSpinLock<T, G>>, G: Guardian> !Send
+    for SpinLockGuard_<T, R, G>
+{
+}
 
 // SAFETY: `SpinLockGuard_` can be shared between tasks/threads in same CPU.
 // As `lock()` is only called when there are no race conditions caused by interrupts.
-unsafe impl<T: ?Sized + Sync, R: Deref<Target = SpinLock<T, G>> + Sync, G: Guardian> Sync
+unsafe impl<T: ?Sized + Sync, R: Deref<Target = GuardSpinLock<T, G>> + Sync, G: Guardian> Sync
     for SpinLockGuard_<T, R, G>
 {
 }

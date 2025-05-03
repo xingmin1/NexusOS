@@ -18,7 +18,7 @@ use crate::{
         frame::allocator::FRAME_ALLOCATOR, nr_subpage_per_huge, paddr_to_vaddr, Paddr, PageFlags,
         PageProperty, PagingConstsTrait, PagingLevel, Vaddr, PAGE_SIZE,
     },
-    sync::SpinLock,
+    sync::GuardSpinLock,
 };
 
 type FrameNumber = usize;
@@ -73,7 +73,7 @@ pub(crate) unsafe fn dismiss() {
 }
 
 /// The boot page table singleton instance.
-static BOOT_PAGE_TABLE: SpinLock<Option<BootPageTable>> = SpinLock::new(None);
+static BOOT_PAGE_TABLE: GuardSpinLock<Option<BootPageTable>> = GuardSpinLock::new(None);
 /// If it reaches the number of CPUs, the boot page table will be dropped.
 static DISMISS_COUNT: AtomicU32 = AtomicU32::new(0);
 cpu_local_cell! {

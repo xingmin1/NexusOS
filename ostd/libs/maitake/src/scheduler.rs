@@ -1167,7 +1167,7 @@ feature! {
             F: Future + Send + 'static,
             F::Output: Send + 'static,
         {
-            let (task, join) = TaskRef::new(self.clone(), future);
+            let (task, join) = TaskRef::new(self.clone(), future, None);
             self.0.spawn_inner(task);
             join
         }
@@ -1334,7 +1334,7 @@ feature! {
             F: Future + Send + 'static,
             F::Output: Send + 'static,
         {
-            let (task, join) = TaskRef::new(self, future);
+            let (task, join) = TaskRef::new(self, future, None);
             self.0.spawn_inner(task);
             join
         }
@@ -1377,7 +1377,7 @@ feature! {
             F: Future + 'static,
             F::Output: 'static,
         {
-            let (task, join) = TaskRef::new(self, future);
+            let (task, join) = TaskRef::new(self, future, None);
             self.core.spawn_inner(task);
             join
         }
@@ -1509,7 +1509,7 @@ feature! {
             F: Future + 'static,
             F::Output: 'static,
         {
-            let (task, join) = TaskRef::new(self.clone(), future);
+            let (task, join) = TaskRef::new(self.clone(), future, None);
             self.core.spawn_inner(task);
             join
         }

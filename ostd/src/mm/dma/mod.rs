@@ -11,7 +11,7 @@ use inherit_methods_macro::inherit_methods;
 use spin::Once;
 
 use super::Paddr;
-use crate::{arch::iommu::has_dma_remapping, mm::PAGE_SIZE, sync::SpinLock};
+use crate::{arch::iommu::has_dma_remapping, mm::PAGE_SIZE, sync::GuardSpinLock};
 
 /// The device address.
 ///
@@ -46,7 +46,7 @@ impl<T: HasDaddr> HasDaddr for &T {
 }
 
 /// Set of all physical addresses with dma mapping.
-static DMA_MAPPING_SET: Once<SpinLock<BTreeSet<Paddr>>> = Once::new();
+static DMA_MAPPING_SET: Once<GuardSpinLock<BTreeSet<Paddr>>> = Once::new();
 
 pub fn dma_type() -> DmaType {
     if has_dma_remapping() {
@@ -57,7 +57,7 @@ pub fn dma_type() -> DmaType {
 }
 
 pub fn init() {
-    DMA_MAPPING_SET.call_once(|| SpinLock::new(BTreeSet::new()));
+    DMA_MAPPING_SET.call_once(|| GuardSpinLock::new(BTreeSet::new()));
 }
 
 /// Checks whether the physical addresses has dma mapping.

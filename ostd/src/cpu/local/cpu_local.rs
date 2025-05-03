@@ -99,6 +99,19 @@ impl<T: 'static> CpuLocal<T> {
             guard,
         }
     }
+    /// 通过闭包函数访问当前CPU上的底层值
+    ///
+    /// 即使类型T不满足Sync trait，也能通过此方法安全地借用其引用。
+    /// 因为这是CPU本地数据且本地中断被禁用，其他运行中的任务无法访问它。
+    ///
+    /// 参数:
+    ///   - f: 接收T的引用并返回U的闭包函数
+    /// 返回:
+    ///   - 闭包函数的执行结果
+    pub fn with<U>(&'static self, f: impl FnOnce(&T) -> U) -> U {
+        let _guard = arch::irq::disable_local(); // 禁用本地中断，确保独占访问
+        f(unsafe { &*self.as_ptr() }) // 安全地解引用指针并执行闭包
+    }
 
     /// Get access to the underlying value through a raw pointer.
     ///

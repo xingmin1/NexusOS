@@ -23,6 +23,7 @@ pub(crate) struct Settings<'a> {
     pub(super) name: Option<&'a str>,
     pub(super) kind: &'static str,
     pub(super) location: Option<Location<'a>>,
+    pub(super) ostd_task_ptr: Option<usize>,
 }
 
 impl<'a, S: Schedule + 'static> Builder<'a, S> {
@@ -89,6 +90,18 @@ impl<'a, S: Schedule + 'static> Builder<'a, S> {
         }
     }
 
+    /// Sets the pointer to the `ostd::task::Task` struct.
+    ///
+    /// This is used to allow user to get the pointer to the `ostd::task::Task` struct from the `TaskRef`.
+    pub fn ostd_task_ptr(self, ostd_task_ptr: usize) -> Self {
+        Self {
+            settings: Settings {
+                ostd_task_ptr: Some(ostd_task_ptr),
+                ..self.settings
+            },
+            ..self
+        }
+    }
     /// Spawns a new task in a custom allocation, with this builder's configured settings.
     ///
     /// Note that the `StoredTask` *must* be bound to the same scheduler
@@ -159,7 +172,7 @@ feature! {
             F: Future + Send + 'static,
             F::Output: Send + 'static,
         {
-            let mut task = Box::new(Task::<S, _, BoxStorage>::new(future));
+            let mut task = Box::new(Task::<S, _, BoxStorage>::new(future, self.settings.ostd_task_ptr));
             task.bind(self.scheduler.clone());
             let (task, join) = TaskRef::build_allocated::<S, _, BoxStorage>(&self.settings, task);
             self.scheduler.schedule(task);
@@ -184,7 +197,7 @@ feature! {
             F: Future + 'static,
             F::Output: 'static,
         {
-            let mut task = Box::new(Task::<&'static LocalStaticScheduler, _, BoxStorage>::new(future));
+            let mut task = Box::new(Task::<&'static LocalStaticScheduler, _, BoxStorage>::new(future, self.settings.ostd_task_ptr));
             task.bind(self.scheduler);
             let (task, join) = TaskRef::build_allocated::<&'static LocalStaticScheduler, _, BoxStorage>(&self.settings, task);
             self.scheduler.schedule(task);
@@ -209,7 +222,7 @@ feature! {
             F: Future + 'static,
             F::Output: 'static,
         {
-            let mut task = Box::new(Task::<LocalScheduler, _, BoxStorage>::new(future));
+            let mut task = Box::new(Task::<LocalScheduler, _, BoxStorage>::new(future, self.settings.ostd_task_ptr));
             task.bind(self.scheduler.clone());
             let (task, join) = TaskRef::build_allocated::<LocalScheduler, _, BoxStorage>(&self.settings, task);
             self.scheduler.schedule(task);
@@ -254,6 +267,7 @@ impl Settings<'_> {
             name: None,
             location: None,
             kind: "task",
+            ostd_task_ptr: None,
         }
     }
 }

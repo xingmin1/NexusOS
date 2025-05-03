@@ -190,6 +190,9 @@ pub(crate) struct Header {
     /// The task's ID.
     id: TaskId,
 
+    /// The pointer to the `ostd::task::Task` struct.
+    ostd_task_ptr: Option<usize>,
+
     /// The task's `tracing` span, if `tracing` is enabled.
     span: trace::Span,
 
@@ -508,6 +511,7 @@ where
                         state: StateCell::new(),
                         id: TaskId::stub(),
                         span: crate::trace::Span::none(),
+                        ostd_task_ptr: None,
                         #[cfg(debug_assertions)]
                         scheduler_type: None,
                     },
@@ -540,7 +544,7 @@ where
     /// the [`Storage`] trait to be used with the scheduler.
     ///
     /// [`Storage`]: crate::task::Storage
-    pub fn new(future: F) -> Self {
+    pub fn new(future: F, ostd_task_ptr: Option<usize>) -> Self {
         Self {
             schedulable: Schedulable {
                 header: Header {
@@ -549,6 +553,7 @@ where
                     state: StateCell::new(),
                     id: TaskId::next(),
                     span: crate::trace::Span::none(),
+                    ostd_task_ptr,
                     #[cfg(debug_assertions)]
                     scheduler_type: Some(TypeId::of::<S>()),
                 },
@@ -976,6 +981,10 @@ impl TaskRef {
         self.header().id
     }
 
+    pub fn ostd_task_ptr(&self) -> Option<usize> {
+        self.header().ostd_task_ptr
+    }
+
     /// Forcibly cancel the task.
     ///
     /// Canceling a task sets a flag indicating that it has been canceled and
@@ -1326,6 +1335,7 @@ impl Header {
                 vtable: &Self::STATIC_STUB_VTABLE,
                 span: trace::Span::none(),
                 id: TaskId::stub(),
+                ostd_task_ptr: None,
                 #[cfg(debug_assertions)]
                 scheduler_type: None,
             }
@@ -1460,12 +1470,12 @@ feature! {
     impl TaskRef {
 
         #[track_caller]
-        pub(crate) fn new<S, F>(scheduler: S, future: F) -> (Self, JoinHandle<F::Output>)
+        pub(crate) fn new<S, F>(scheduler: S, future: F, ostd_task_ptr: Option<usize>) -> (Self, JoinHandle<F::Output>)
         where
             S: Schedule + 'static,
             F: Future + 'static
         {
-            let mut task = Box::new(Task::<S, F, BoxStorage>::new(future));
+            let mut task = Box::new(Task::<S, F, BoxStorage>::new(future, ostd_task_ptr));
             task.bind(scheduler);
             Self::build_allocated::<S, F, BoxStorage>(Self::NO_BUILDER, task)
         }

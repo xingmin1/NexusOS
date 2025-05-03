@@ -327,12 +327,12 @@ feature! {
         /// allowing it to run in the background without awaiting its output.
         #[inline]
         #[track_caller]
-        pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+        pub fn spawn<F>(&self, future: F, ostd_task_ptr: Option<usize>) -> JoinHandle<F::Output>
         where
             F: Future + Send + 'static,
             F::Output: Send + 'static,
         {
-            let task = Box::new(Task::<S, _, BoxStorage>::new(future));
+            let task = Box::new(Task::<S, _, BoxStorage>::new(future, ostd_task_ptr));
             self.spawn_allocated::<BoxStorage, _>(task)
         }
     }

@@ -13,7 +13,7 @@ use crate::{
     arch::irq::IpiSendError,
     cpu::{CpuSet, PinCurrentCpu},
     cpu_local,
-    sync::SpinLock,
+    sync::GuardSpinLock,
     trap::{self, IrqLine, TrapFrame},
 };
 
@@ -64,7 +64,7 @@ pub fn inter_processor_call(targets: &CpuSet, f: fn()) {
 static INTER_PROCESSOR_CALL_IRQ: Once<IrqLine> = Once::new();
 
 cpu_local! {
-    static CALL_QUEUES: SpinLock<VecDeque<fn()>> = SpinLock::new(VecDeque::new());
+    static CALL_QUEUES: GuardSpinLock<VecDeque<fn()>> = GuardSpinLock::new(VecDeque::new());
 }
 
 fn do_inter_processor_call(_trapframe: &TrapFrame) {

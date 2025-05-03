@@ -9,7 +9,7 @@ pub use unwinding::panic::{begin_panic, catch_unwind};
 use crate::{
     arch::qemu::{exit_qemu, QemuExitCode},
     early_print, early_println,
-    sync::SpinLock,
+    sync::GuardSpinLock,
 };
 
 extern crate cfg_if;
@@ -58,7 +58,7 @@ pub fn abort() -> ! {
 pub fn print_stack_trace() {
     /// We acquire a global lock to prevent the frames in the stack trace from
     /// interleaving. The spin lock is used merely for its simplicity.
-    static BACKTRACE_PRINT_LOCK: SpinLock<()> = SpinLock::new(());
+    static BACKTRACE_PRINT_LOCK: GuardSpinLock<()> = GuardSpinLock::new(());
     let _lock = BACKTRACE_PRINT_LOCK.lock();
 
     early_println!("Printing stack trace:");

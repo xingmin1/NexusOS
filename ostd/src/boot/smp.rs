@@ -35,7 +35,7 @@ struct PerApInfo {
     boot_stack_pages: Segment<KernelMeta>,
 }
 
-static AP_LATE_ENTRY: Once<fn()> = Once::new();
+static AP_LATE_ENTRY: Once<fn() -> !> = Once::new();
 
 /// Boot all application processors.
 ///
@@ -118,11 +118,12 @@ pub fn boot_all_aps(bsp_hart_id: u32) {
 ///
 /// Once the entry function is registered, all the application processors
 /// will jump to the entry function immediately.
-pub fn register_ap_entry(entry: fn()) {
+pub fn register_ap_entry(entry: fn() -> !) {
     AP_LATE_ENTRY.call_once(|| entry);
 }
 
 #[no_mangle]
+#[allow(unreachable_code)] // 允许函数包含不可达代码
 pub(crate) fn ap_early_entry(ap_hart_id: u32) -> ! {
     // SAFETY: 在初始化`sscratch`和`stvec`之后，不会在手动修改这些寄存器
     unsafe {
@@ -150,8 +151,7 @@ pub(crate) fn ap_early_entry(ap_hart_id: u32) -> ! {
     let ap_late_entry = AP_LATE_ENTRY.wait();
     ap_late_entry();
 
-    Task::yield_now();
-    unreachable!("`yield_now` in the boot context should not return");
+    unreachable!("`ap_late_entry` should not return");
 }
 
 fn wait_for_all_aps_started() {

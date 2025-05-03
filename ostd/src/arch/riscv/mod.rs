@@ -11,11 +11,12 @@ pub(crate) mod mm;
 pub(crate) mod pci;
 pub mod qemu;
 pub mod serial;
-pub mod task;
 pub mod timer;
 pub mod trap;
 
 use core::sync::atomic::Ordering;
+
+pub use cpu::wait_for_interrupt;
 
 #[cfg(feature = "cvm_guest")]
 pub(crate) fn init_cvm_guest() {

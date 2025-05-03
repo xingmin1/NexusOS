@@ -60,8 +60,8 @@ impl log::Log for Logger {
         let level = record.level();
 
         // Use a global lock to prevent interleaving of log messages.
-        use crate::sync::SpinLock;
-        static RECORD_LOCK: SpinLock<()> = SpinLock::new(());
+        use crate::sync::GuardSpinLock;
+        static RECORD_LOCK: GuardSpinLock<()> = GuardSpinLock::new(());
         let _lock = RECORD_LOCK.disable_irq().lock();
 
         crate::console::early_print(format_args!("{}: {}\n", level, record.args()));

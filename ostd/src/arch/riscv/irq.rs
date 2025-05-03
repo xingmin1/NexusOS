@@ -10,12 +10,12 @@ use spin::Once;
 use crate::{
     cpu::CpuId,
     cpu_local,
-    sync::{Mutex, PreemptDisabled, SpinLock, SpinLockGuard},
+    sync::{blocking::Mutex, spin::Spinlock, GuardSpinLock, PreemptDisabled, SpinLockGuard},
     trap::TrapFrame,
 };
 
 /// The global allocator for software defined IRQ lines.
-pub(crate) static IRQ_ALLOCATOR: Once<SpinLock<IdAlloc>> = Once::new();
+pub(crate) static IRQ_ALLOCATOR: Once<GuardSpinLock<IdAlloc>> = Once::new();
 
 pub(crate) static IRQ_LIST: Once<Vec<IrqLine>> = Once::new();
 
@@ -28,12 +28,13 @@ pub(crate) fn init() {
     for i in 0..256 {
         list.push(IrqLine {
             irq_num: i as u8,
-            callback_list: SpinLock::new(Vec::new()),
+            callback_list: GuardSpinLock::new(Vec::new()),
         });
     }
     IRQ_LIST.call_once(|| list);
-    CALLBACK_ID_ALLOCATOR.call_once(|| Mutex::new(IdAlloc::with_capacity(256)));
-    IRQ_ALLOCATOR.call_once(|| SpinLock::new(IdAlloc::with_capacity(256)));
+    CALLBACK_ID_ALLOCATOR
+        .call_once(|| Mutex::new_with_raw_mutex(IdAlloc::with_capacity(256), Spinlock::new()));
+    IRQ_ALLOCATOR.call_once(|| GuardSpinLock::new(IdAlloc::with_capacity(256)));
     for cpu_id in crate::cpu::all_cpus() {
         CPU_IPI_QUEUES
             .get_on_cpu(cpu_id)
@@ -65,7 +66,7 @@ pub(crate) fn is_local_enabled() -> bool {
     riscv::register::sstatus::read().sie()
 }
 
-static CALLBACK_ID_ALLOCATOR: Once<Mutex<IdAlloc>> = Once::new();
+static CALLBACK_ID_ALLOCATOR: Once<Mutex<IdAlloc, Spinlock>> = Once::new();
 
 /// 中断回调函数封装结构
 ///
@@ -108,7 +109,7 @@ impl Debug for CallbackElement {
 #[derive(Debug)]
 pub(crate) struct IrqLine {
     pub(crate) irq_num: u8,
-    pub(crate) callback_list: SpinLock<Vec<CallbackElement>>,
+    pub(crate) callback_list: GuardSpinLock<Vec<CallbackElement>>,
 }
 
 impl IrqLine {

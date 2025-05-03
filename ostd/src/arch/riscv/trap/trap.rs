@@ -214,7 +214,6 @@ impl UserContext {
     }
 }
 
-#[expect(improper_ctypes)]
 extern "C" {
     fn trap_entry();
     fn run_user(regs: &mut UserContext);

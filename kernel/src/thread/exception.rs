@@ -4,9 +4,9 @@ use aster_rights::Full;
 use ostd::{
     cpu::{CpuException, CpuExceptionInfo},
     mm::{Vaddr, VmSpace},
-    prelude::println,
     task::Task,
 };
+use tracing::warn;
 
 use crate::{
     thread::GetThreadLocalData,
@@ -36,7 +36,7 @@ impl TryFrom<&CpuExceptionInfo> for PageFaultInfo {
             CpuException::LoadPageFault => VmPerms::READ,
             CpuException::StorePageFault => VmPerms::WRITE | VmPerms::READ,
             _ => {
-                println!("其他异常类型: {:?}", value.code);
+                warn!("其他异常类型: {:?}", value.code);
                 VmPerms::empty()
             }
         };
@@ -78,7 +78,7 @@ pub(crate) async fn handle_page_fault_from_vmar(
         //     "page fault handler failed: addr: 0x{:x}, err: {:?}",
         //     page_fault_info.address, e
         // );
-        println!(
+        warn!(
             "page fault handler failed: addr: 0x{:x}, err: {:?}",
             page_fault_info.address, e
         );

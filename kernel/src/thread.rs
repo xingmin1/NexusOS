@@ -15,13 +15,13 @@ use ostd::{
     arch::qemu::{exit_qemu, QemuExitCode},
     cpu::{CpuException, PinCurrentCpu, UserContext},
     mm::{FallibleVmRead, VmSpace, VmWriter},
-    prelude::println,
     sync::GuardRwArc,
     task::{
         disable_preempt, scheduler::blocking_future::BlockingFuture, CurrentTask, Task, TaskOptions,
     },
     user::{ReturnReason, UserContextApi, UserMode, UserSpace},
 };
+use tracing::{debug, error, info, warn};
 
 use crate::{error::Result, vm::ProcessVm};
 
@@ -78,9 +78,9 @@ impl ThreadBuilder {
     pub async fn spawn(&self) -> Result<Arc<ThreadSharedInfo>> {
         let process_vm = Arc::new(ProcessVm::alloc());
         let user_task_options = create_user_task(&process_vm).await.inspect_err(|e| {
-            println!("create_user_task 失败: {:?}", e);
+            error!("create_user_task 失败: {:?}", e);
         })?;
-        println!("创建用户任务完成，准备运行");
+        info!("创建用户任务完成，准备运行");
 
         let thread_shared_info = Arc::new(ThreadSharedInfo {
             tid: 0,
@@ -103,19 +103,19 @@ impl ThreadBuilder {
             {
                 let disable_preempt = disable_preempt();
                 let cpu_id = disable_preempt.current_cpu().as_usize();
-                println!("用户任务开始在CPU {} 上执行", cpu_id);
+                info!("用户任务开始在CPU {} 上执行", cpu_id);
             }
             let user_space = current.user_space().unwrap();
             let mut user_mode = UserMode::new(user_space);
-            println!("创建用户模式完成，准备进入用户空间");
+            info!("创建用户模式完成，准备进入用户空间");
 
             loop {
                 // The execute method returns when system
                 // calls or CPU exceptions occur or some
                 // events specified by the kernel occur.
-                println!("准备切换到用户空间执行");
+                debug!("准备切换到用户空间执行");
                 let return_reason = user_mode.execute(|| false).await;
-                println!("从用户空间返回，原因: {:?}", return_reason);
+                debug!("从用户空间返回，原因: {:?}", return_reason);
 
                 // The CPU registers of the user space
                 // can be accessed and manipulated via
@@ -123,13 +123,13 @@ impl ThreadBuilder {
                 let user_context = user_mode.context_mut();
                 if return_reason == ReturnReason::UserException {
                     if user_context.trap_information().code == CpuException::UserEnvCall {
-                        println!("处理系统调用，系统调用号: {}", user_context.a7());
+                        debug!("处理系统调用，系统调用号: {}", user_context.a7());
                         handle_syscall(
                             user_context,
                             &thread_state.process_vm.root_vmar().vm_space(),
                         );
                     } else {
-                        println!("处理异常");
+                        debug!("处理异常");
                         if let Ok(page_fault_info) =
                             PageFaultInfo::try_from(user_context.trap_information())
                         {
@@ -150,11 +150,11 @@ impl ThreadBuilder {
 }
 
 async fn create_user_task(process_vm: &ProcessVm) -> Result<TaskOptions> {
-    println!("开始创建用户任务");
+    info!("开始创建用户任务");
     let elf_load_info = load_elf_to_vm(process_vm, vec![], vec![])
         .await
         .inspect_err(|e| {
-            println!("load_elf_to_vm 失败: {:?}", e);
+            error!("load_elf_to_vm 失败: {:?}", e);
         })?;
 
     let vm_space = process_vm.root_vmar().vm_space().clone();
@@ -163,7 +163,7 @@ async fn create_user_task(process_vm: &ProcessVm) -> Result<TaskOptions> {
     user_context.set_stack_pointer(elf_load_info.user_stack_top() as _);
     let user_space = Arc::new(UserSpace::new(vm_space.clone(), user_context));
 
-    println!(
+    info!(
         "创建用户上下文完成，入口点: 0x{:x}",
         user_context.instruction_pointer()
     );
@@ -171,7 +171,7 @@ async fn create_user_task(process_vm: &ProcessVm) -> Result<TaskOptions> {
     // Kernel tasks are managed by the Framework,
     // while scheduling algorithms for them can be
     // determined by the users of the Framework.
-    println!("构建用户任务");
+    info!("构建用户任务");
 
     Ok(TaskOptions::new().user_space(Some(user_space)))
 }
@@ -185,7 +185,7 @@ fn handle_syscall(user_context: &mut UserContext, vm_space: &VmSpace) {
         SYS_WRITE => {
             // RISC-V，系统调用参数放在a0-a6寄存器中
             let (fd, buf_addr, buf_len) = (user_context.a0(), user_context.a1(), user_context.a2());
-            println!(
+            debug!(
                 "处理write系统调用: fd={}, buf_addr=0x{:x}, buf_len={}",
                 fd, buf_addr, buf_len
             );
@@ -197,23 +197,23 @@ fn handle_syscall(user_context: &mut UserContext, vm_space: &VmSpace) {
                 reader
                     .read_fallible(&mut VmWriter::from(&mut buf as &mut [u8]))
                     .unwrap();
-                println!("从用户空间读取数据成功，长度: {}", buf_len);
+                debug!("从用户空间读取数据成功，长度: {}", buf_len);
                 buf
             };
             // Use the console for output safely.
             let content = str::from_utf8(&buf).unwrap();
-            println!("用户程序输出: {}", content);
+            info!("用户程序输出: {}", content);
             // Manipulate the user-space CPU registers safely.
             user_context.set_a0(buf_len);
-            println!("write系统调用处理完成，返回值: {}", buf_len);
+            debug!("write系统调用处理完成，返回值: {}", buf_len);
         }
         SYS_EXIT => {
             let exit_code = user_context.a0();
-            println!("处理exit系统调用，退出码: {}", exit_code);
+            info!("处理exit系统调用，退出码: {}", exit_code);
             exit_qemu(QemuExitCode::Success);
         }
         syscall_num => {
-            println!("未实现的系统调用: {}", syscall_num);
+            warn!("未实现的系统调用: {}", syscall_num);
             unimplemented!();
         }
     }

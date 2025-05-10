@@ -44,6 +44,7 @@ use super::{disable_preempt, preempt::cpu_local, Task};
 use crate::{
     cpu::{CpuId, PinCurrentCpu},
     cpu_local,
+    prelude::println,
 };
 
 /// 单核内核运行时。
@@ -99,20 +100,22 @@ static RUNTIME: Runtime = {
 };
 
 /// 在 Mycelium 的全局运行时上生成一个任务。
-pub fn spawn<F>(future: F, ostd_task_ptr: usize) -> JoinHandle<F::Output>
+pub fn spawn<F>(future: F, ostd_task_ptr: Option<usize>) -> JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
     SCHEDULER.with(|scheduler| {
         if let Some(scheduler) = scheduler.get() {
-            scheduler
-                .build_task()
-                .ostd_task_ptr(ostd_task_ptr)
-                .spawn(future)
+            let task_builder = scheduler.build_task();
+            if let Some(ostd_task_ptr) = ostd_task_ptr {
+                task_builder.ostd_task_ptr(ostd_task_ptr).spawn(future)
+            } else {
+                task_builder.spawn(future)
+            }
         } else {
             // 此核心上没有调度器在运行。
-            RUNTIME.injector.spawn(future, Some(ostd_task_ptr))
+            RUNTIME.injector.spawn(future, ostd_task_ptr)
         }
     })
 }
@@ -355,10 +358,15 @@ pub(super) async fn yield_now() {
 ///
 /// 注意，新任务不保证立即运行。
 #[track_caller]
-pub(super) fn run_new_task<Fut: Future + 'static + Send>(runnable: Arc<Task>, future: Fut) {
+pub(super) fn spawn_user_task<Fut>(runnable: Arc<Task>, future: Fut) -> JoinHandle<Fut::Output>
+where
+    Fut: Future + Send + 'static,
+    Fut::Output: Send + 'static,
+{
     let runnable_ptr = Arc::as_ptr(&runnable) as usize;
     let future = async move {
         if let Some(user_space) = runnable.user_space() {
+            println!("user_space.vm_space().activate()");
             user_space.vm_space().activate();
         }
         crate::arch::irq::enable_local();
@@ -366,7 +374,7 @@ pub(super) fn run_new_task<Fut: Future + 'static + Send>(runnable: Arc<Task>, fu
         future.await;
         exit_current().await;
     };
-    spawn(future, runnable_ptr);
+    spawn(future, Some(runnable_ptr))
 }
 
 #[allow(unused)]
@@ -411,4 +419,46 @@ pub(crate) fn get_current_task_ptr() -> Option<usize> {
     current_task
         .expect("There are no tasks running in the scheduler.")
         .ostd_task_ptr()
+}
+
+/// 一个用于将异步任务转换为阻塞任务的模块。
+///
+/// 这个模块提供了一个 `BlockingFuture` trait，
+/// 它允许将异步任务转换为阻塞任务，以便在需要时使用。
+///
+/// 主要功能包括：
+/// - 将异步任务转换为阻塞任务
+pub mod blocking_future {
+
+    use alloc::boxed::Box;
+    use core::{future::*, hint::spin_loop, task::*};
+
+    use crate::early_println;
+
+    /// 一个用于将异步任务转换为阻塞任务的 trait。
+    ///
+    /// 这个 trait 允许将异步任务转换为阻塞任务，以便在需要时使用。
+    ///
+    /// 主要功能包括：
+    /// - 将异步任务转换为阻塞任务
+    pub trait BlockingFuture: Future + Sized {
+        /// 将异步任务转换为阻塞任务。
+        fn block(self) -> <Self as Future>::Output {
+            let mut boxed = Box::pin(self);
+            let mut ctx = Context::from_waker(maitake::task::Waker::noop());
+            loop {
+                match boxed.as_mut().poll(&mut ctx) {
+                    Poll::Ready(x) => {
+                        early_println!("finished");
+                        return x;
+                    }
+                    Poll::Pending => {
+                        spin_loop();
+                    }
+                }
+            }
+        }
+    }
+
+    impl<F: Future + Sized> BlockingFuture for F {}
 }

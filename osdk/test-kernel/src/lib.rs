@@ -49,7 +49,7 @@ fn main() {
         };
     };
 
-    TaskOptions::new(test_task).data(()).spawn().unwrap();
+    TaskOptions::new(test_task).data(()).spawn(()).unwrap();
 }
 
 #[ostd::ktest::panic_handler]

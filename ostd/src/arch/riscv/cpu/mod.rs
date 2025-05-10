@@ -53,10 +53,8 @@ pub struct UserContext {
 pub struct CpuExceptionInfo {
     /// The type of the exception.
     pub code: Exception,
-    /// The address of the page fault.
-    pub page_fault_addr: usize,
-    /// The error code associated with the exception.
-    pub error_code: usize, // TODO
+    /// The value of stval.
+    pub stval: usize,
 }
 
 impl Default for UserContext {
@@ -74,8 +72,7 @@ impl Default for CpuExceptionInfo {
     fn default() -> Self {
         CpuExceptionInfo {
             code: Exception::UserEnvCall,
-            page_fault_addr: 0,
-            error_code: 0,
+            stval: 0,
         }
     }
 }
@@ -143,17 +140,14 @@ impl UserContextApiInternal for UserContext {
                 }
                 Trap::Exception(Exception::UserEnvCall) => {
                     self.user_context.sepc += 4;
-                    break ReturnReason::UserSyscall;
+                    self.cpu_exception_info = CpuExceptionInfo { code: Exception::UserEnvCall, stval: 0 };
+                    break ReturnReason::UserException;
                 }
                 Trap::Exception(e) => {
                     let stval = riscv::register::stval::read();
                     log::trace!("Exception, scause: {e:?}, stval: {stval:#x?}");
                     early_println!("Exception, scause: {:?}, stval: {:#x?}", e, stval);
-                    self.cpu_exception_info = CpuExceptionInfo {
-                        code: e,
-                        page_fault_addr: stval,
-                        error_code: 0,
-                    };
+                    self.cpu_exception_info = CpuExceptionInfo { code: e, stval };
                     break ReturnReason::UserException;
                 }
             }

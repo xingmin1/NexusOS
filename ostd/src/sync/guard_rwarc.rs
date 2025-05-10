@@ -19,6 +19,9 @@ use super::{GuardRwLock, PreemptDisabled, RwLockReadGuard, RwLockWriteGuard};
 /// details.
 pub struct GuardRwArc<T>(Arc<Inner<T>>);
 
+unsafe impl<T> Send for GuardRwArc<T> {}
+unsafe impl<T> Sync for GuardRwArc<T> {}
+
 /// A reference-counting pointer with read-only capabilities.
 ///
 /// This type can be created from an existing [`RwArc`] using its [`RwArc::clone_ro`] method. See

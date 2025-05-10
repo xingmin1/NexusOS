@@ -68,6 +68,7 @@ use crate::{
 ///
 /// [`USegment`]: crate::mm::USegment
 /// [`UFrame`]: crate::mm::UFrame
+/// TODO: 改为异步实现
 pub trait VmIo: Send + Sync {
     /// Reads requested data at a specified offset into a given `VmWriter`.
     ///

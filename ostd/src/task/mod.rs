@@ -9,6 +9,7 @@ mod utils;
 
 use core::{any::Any, borrow::Borrow, future::Future, ops::Deref, option::Option, ptr::NonNull};
 
+use maitake::task::JoinHandle;
 pub use maitake::{
     future::yield_now,
     time::{sleep, Duration},
@@ -81,6 +82,16 @@ impl Task {
 
         user_space.fpu_state().restore();
     }
+
+    /// Sets the data associated with the task.
+    pub fn set_data(&mut self, data: Box<dyn Any + Send + Sync>) {
+        self.data = data;
+    }
+
+    /// Sets the local data associated with the task.
+    pub fn set_local_data(&mut self, data: Box<dyn Any + Send>) {
+        self.local_data = ForceSync::new(data);
+    }
 }
 
 impl Task {
@@ -88,8 +99,12 @@ impl Task {
     ///
     /// BUG: This method highly depends on the current scheduling policy.
     #[track_caller]
-    pub fn run(self: &Arc<Self>, future: impl Future + 'static + Send) {
-        scheduler::run_new_task(self.clone(), future);
+    pub fn run<Fut>(self: &Arc<Self>, future: Fut) -> JoinHandle<Fut::Output>
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send + 'static,
+    {
+        scheduler::spawn_user_task(self.clone(), future)
     }
 }
 
@@ -147,10 +162,13 @@ impl TaskOptions {
 impl TaskOptions {
     /// Builds a new task and runs it immediately.
     #[track_caller]
-    pub fn spawn(self, future: impl Future + 'static + Send) -> Arc<Task> {
+    pub fn spawn<Fut>(self, future: Fut) -> JoinHandle<Fut::Output>
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send + 'static,
+    {
         let task = Arc::new(self.build());
-        task.run(future);
-        task
+        task.run(future)
     }
 }
 

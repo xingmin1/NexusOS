@@ -169,6 +169,7 @@ impl<'a> UserMode<'a> {
 /// A reason as to why the control of the CPU is returned from
 /// the user space to the kernel.
 pub enum ReturnReason {
+    #[cfg(target_arch = "x86_64")]
     /// A system call is issued by the user space.
     UserSyscall,
     /// A CPU exception is triggered by the user space.

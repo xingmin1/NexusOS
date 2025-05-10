@@ -20,10 +20,10 @@ use ostd::{
         FallibleVmRead, FallibleVmWrite, FrameAllocOptions, UFrame, UntypedMem, VmReader, VmWriter,
         PAGE_SIZE,
     },
-    prelude::println,
     sync::Mutex,
     task::scheduler::blocking_future::BlockingFuture,
 };
+use tracing::error;
 
 mod dyn_cap;
 mod options;
@@ -373,7 +373,7 @@ impl Vmo_ {
             self.operate_on_range(&write_range, write, CommitFlags::empty())
                 .await
                 .inspect_err(|e| {
-                    println!("operate_on_range 失败: {:?}", e);
+                    error!("operate_on_range 失败: {:?}", e);
                 })?;
         } else {
             let temp = write_range.start + PAGE_SIZE - 1;
@@ -384,7 +384,7 @@ impl Vmo_ {
                 self.operate_on_range(&head_range, &mut write, CommitFlags::empty())
                     .await
                     .inspect_err(|e| {
-                        println!("operate_on_range 失败: {:?}", e);
+                        error!("operate_on_range 失败: {:?}", e);
                     })?;
             }
             if up_align_start != down_align_end {
@@ -392,7 +392,7 @@ impl Vmo_ {
                 self.operate_on_range(&mid_range, &mut write, CommitFlags::WILL_OVERWRITE)
                     .await
                     .inspect_err(|e| {
-                        println!("operate_on_range 失败: {:?}", e);
+                        error!("operate_on_range 失败: {:?}", e);
                     })?;
             }
             if down_align_end != write_range.end {
@@ -400,7 +400,7 @@ impl Vmo_ {
                 self.operate_on_range(&tail_range, &mut write, CommitFlags::empty())
                     .await
                     .inspect_err(|e| {
-                        println!("operate_on_range 失败: {:?}", e);
+                        error!("operate_on_range 失败: {:?}", e);
                     })?;
             }
         }

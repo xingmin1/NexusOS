@@ -9,10 +9,8 @@ use elf_loader::{
     object::ElfBinary,
     Loader,
 };
-use ostd::{
-    mm::{Vaddr, VmIo, PAGE_SIZE},
-    prelude::println,
-};
+use ostd::mm::{Vaddr, VmIo, PAGE_SIZE};
+use tracing::{error, trace};
 
 use super::init_stack::{AuxKey, AuxVec};
 use crate::{
@@ -73,7 +71,7 @@ pub async fn load_elf_to_vm(
                 .map_and_write_init_stack(argv, envp, aux_vec)
                 .await
                 .inspect_err(|e| {
-                    println!("map_and_write_init_stack 失败: {:?}", e);
+                    error!("map_and_write_init_stack 失败: {:?}", e);
                 })?;
 
             // 4.3 准备返回信息
@@ -84,7 +82,7 @@ pub async fn load_elf_to_vm(
         }
         // 5. 处理错误情况
         Err(err) => {
-            println!("in load_elf_to_vm 失败: {:?}", err);
+            error!("in load_elf_to_vm 失败: {:?}", err);
             // 如果 `init_and_map_vmos` 失败了，说明进程的内存状态可能已经不一致或损坏了。
             // 进程无法安全地返回用户空间继续执行。
 
@@ -126,7 +124,7 @@ async fn init_and_map_vmos(
     let elf_map_addr = map_segment_vmos(parsed_elf, root_vmar, elf_file)
         .await
         .inspect_err(|e| {
-            println!("map_segment_vmos 失败: {:?}", e);
+            error!("map_segment_vmos 失败: {:?}", e);
         })?;
 
     let aux_vec = {
@@ -134,7 +132,7 @@ async fn init_and_map_vmos(
         //     .as_ref()
         //     .map(|load_info| load_info.base_addr());
         init_aux_vec(parsed_elf, elf_map_addr, None).inspect_err(|e| {
-            println!("init_aux_vec 失败: {:?}", e);
+            error!("init_aux_vec 失败: {:?}", e);
         })?
     };
 
@@ -181,7 +179,7 @@ pub async fn map_segment_vmos(
             map_segment_vmo(program_header, elf_file, root_vmar, base_addr)
                 .await
                 .inspect_err(|e| {
-                    println!("map_segment_vmo 失败: {:?}", e);
+                    error!("map_segment_vmo 失败: {:?}", e);
                 })?;
         }
     }
@@ -220,19 +218,19 @@ async fn map_segment_vmo(
         //         "executable has no page cache",
         //     ))?
         //     .to_dyn()
-        //     .dup_independent()?
-        println!("program_header.p_memsz = {:?}", program_header.p_memsz);
-        println!("program_header.p_filesz = {:?}", program_header.p_filesz);
+        //     .dup_independent()?)
+        trace!("program_header.p_memsz = {:?}", program_header.p_memsz);
+        trace!("program_header.p_filesz = {:?}", program_header.p_filesz);
         let vmo_options = VmoOptions::<Rights>::new(program_header.p_memsz as usize);
         let vmo = vmo_options.alloc().inspect_err(|e| {
-            println!("vmo_options.alloc 失败: {:?}", e);
+            error!("vmo_options.alloc 失败: {:?}", e);
         })?;
         vmo.write_slice(
             file_offset % PAGE_SIZE,
             elf_file[file_offset..(file_offset + program_header.p_filesz as usize)].as_ref(),
         )
         .inspect_err(|e| {
-            println!("vmo.write_slice 失败: {:?}", e);
+            error!("vmo.write_slice 失败: {:?}", e);
         })?;
         vmo
     };
@@ -272,7 +270,7 @@ async fn map_segment_vmo(
             .replace(new_frame.into(), head_idx)
             .await
             .inspect_err(|e| {
-                println!("segment_vmo.replace 失败: {:?}", e);
+                error!("segment_vmo.replace 失败: {:?}", e);
             })?;
     }
 
@@ -284,7 +282,7 @@ async fn map_segment_vmo(
                 .commit_page(segment_offset + tail_padding_offset)
                 .await
                 .inspect_err(|e| {
-                    println!("segment_vmo.commit_page 失败: {:?}", e);
+                    error!("segment_vmo.commit_page 失败: {:?}", e);
                 })?;
             let new_frame = duplicate_frame(&tail_frame)?;
 
@@ -313,7 +311,7 @@ async fn map_segment_vmo(
             .can_overwrite(true);
         vm_map_options = vm_map_options.offset(offset).handle_page_faults_around();
         vm_map_options.build().await.inspect_err(|e| {
-            println!("vm_map_options.build 失败: {:?}", e);
+            error!("vm_map_options.build 失败: {:?}", e);
         })?;
     }
 
@@ -325,7 +323,7 @@ async fn map_segment_vmo(
             .can_overwrite(true);
         anonymous_map_options = anonymous_map_options.offset(offset + segment_size);
         anonymous_map_options.build().await.inspect_err(|e| {
-            println!("anonymous_map_options.build 失败: {:?}", e);
+            error!("anonymous_map_options.build 失败: {:?}", e);
         })?;
     }
     Ok(())

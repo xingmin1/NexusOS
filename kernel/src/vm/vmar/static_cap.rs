@@ -4,7 +4,7 @@ use core::ops::Range;
 
 use aster_rights::{Dup, Rights, TRightSet, TRights, Write};
 use aster_rights_proc::require;
-use ostd::prelude::println;
+use tracing::{trace, warn};
 
 use super::{VmPerms, Vmar, VmarMapOptions, VmarRightsOp, Vmar_};
 use crate::{
@@ -148,19 +148,19 @@ impl<R: TRights> Vmar<TRightSet<R>> {
 
 impl<R: TRights> PageFaultHandler for Vmar<TRightSet<R>> {
     async fn handle_page_fault(&self, page_fault_info: &PageFaultInfo) -> Result<()> {
-        println!("vmar handle page fault");
+        trace!("vmar handle page fault");
         self.check_rights(page_fault_info.required_perms.into())
             .inspect_err(|e| {
-                println!("vmar handle page fault failed: {:?}", e);
+                warn!("vmar handle page fault failed: {:?}", e);
             })?;
         self.0
             .handle_page_fault(page_fault_info)
             .await
             .inspect_err(|e| {
-                println!("vmar handle page fault failed: {:?}", e);
+                warn!("vmar handle page fault failed: {:?}", e);
             })
             .inspect(|_| {
-                println!("vmar handle page fault success");
+                trace!("vmar handle page fault success");
             })
     }
 }

@@ -16,6 +16,10 @@ members = [
     "ostd/libs/maitake/libs/bitfield",
     "ostd/libs/maitake-sync",
     "ostd/libs/maitake",
+    "kernel/libs/aster-rights",
+    "kernel/libs/aster-rights-proc",
+    "kernel/libs/typeflags",
+    "kernel/libs/typeflags-util",
 ]
 exclude = [
     "osdk",

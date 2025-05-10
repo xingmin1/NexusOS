@@ -29,5 +29,6 @@
         "**/.svn": false,
         "**/CVS": false,
         "**/Thumbs.db": false
-    }
+    },
+    "commentTranslate.hover.enabled": false
 }

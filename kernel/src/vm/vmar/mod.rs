@@ -25,7 +25,6 @@ use self::{
     interval_set::{Interval, IntervalSet},
     vm_mapping::{MappedVmo, VmMapping},
 };
-use super::page_fault_handler::PageFaultHandler;
 use crate::{
     error::{Errno, Error, Result},
     return_errno_with_message,

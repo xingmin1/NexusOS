@@ -87,6 +87,7 @@ dependencies = [
  "aster-rights-proc",
  "bitflags 2.9.0",
  "elf_loader",
+ "nexus-error",
  "ostd",
  "tracing 0.1.41",
  "tracing-core 0.1.33",
@@ -1149,6 +1150,13 @@ dependencies = [
  "tracing 0.2.0",
  "tracing-subscriber 0.3.0",
  "tracing-subscriber 0.3.19",
+]
+
+[[package]]
+name = "nexus-error"
+version = "0.1.0"
+dependencies = [
+ "ostd",
 ]
 
 [[package]]

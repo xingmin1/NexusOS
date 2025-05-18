@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 ostd = { path = "../ostd" }
+nexus-error = { path = "libs/nexus-error" }
 align_ext = { path = "../ostd/libs/align_ext" }
 elf_loader = { version = "0.9.3", default-features = false }
 aster-rights = { path = "libs/aster-rights" }

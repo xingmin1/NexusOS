@@ -23,6 +23,8 @@ use ostd::{
 };
 use thread::ThreadBuilder;
 use tracing::{debug, info, trace_span, warn};
+#[allow(unused_imports)]
+use nexus_error::{return_errno, return_errno_with_message};
 
 /// The kernel's boot and initialization process is managed by OSTD.
 /// After the process is done, the kernel's execution environment

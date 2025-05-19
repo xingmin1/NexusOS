@@ -13,4 +13,4 @@ id-alloc = { path = "../../../ostd/libs/id-alloc" }
 ostd = { path = "../../../ostd" } 
 nexus-error = { path = "../../libs/nexus-error" } 
 async-trait = "0.1.88"
-error-stack = { version = "0.5.0", default-features = false }
+tracing = { version = "0.1.41", default-features = false }

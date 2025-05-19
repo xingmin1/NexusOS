@@ -16,8 +16,8 @@ use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display};
 use core::hash::{Hash, Hasher};
 use core::ops::Deref;
-use crate::verror::{vfs_err_invalid_argument, VfsErrorContext, VfsResult};
-use error_stack::Report;
+use crate::verror::{vfs_err_invalid_argument, VfsResult};
+use nexus_error::error_stack::Report;
 
 /// 一个借用的、经过验证和规范化的 UTF-8 虚拟文件系统路径切片 (`&VfsPath`)。
 ///
@@ -481,7 +481,7 @@ impl From<&str> for VfsPathBuf {
 }
 
 impl TryFrom<AllocString> for VfsPathBuf {
-    type Error = Report<VfsErrorContext>;
+    type Error = Report<nexus_error::Error>;
     fn try_from(s: AllocString) -> Result<Self, Self::Error> {
         VfsPathBuf::new(s)
     }

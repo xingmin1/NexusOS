@@ -6,7 +6,7 @@ use crate::path::{VfsPath, VfsPathBuf};
 use crate::types::{
     DirectoryEntry, FilesystemId, FilesystemStats, FsOptions, MountId, OpenFlags, SeekFrom, VnodeId, VnodeMetadata, VnodeMetadataChanges, VnodeType
 };
-use crate::verror::{VfsResult, vfs_err_unsupported}; // 采用 error_stack 错误链方案，所有错误返回值均为 VfsResult
+use crate::verror::{vfs_err_unsupported, VfsResult}; // 采用 error_stack 错误链方案，所有错误返回值均为 VfsResult
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use crate::types::OsStr;

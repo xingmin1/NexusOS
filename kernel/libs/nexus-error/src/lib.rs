@@ -2,6 +2,8 @@
 
 #![no_std]
 
+pub use error_stack;
+
 use alloc::fmt;
 
 extern crate alloc;
@@ -500,3 +502,5 @@ macro_rules! return_errno_with_message {
         return Err($crate::Error::with_message($errno, $message))
     };
 }
+
+impl error_stack::Context for Error {}

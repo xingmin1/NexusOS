@@ -1,5 +1,5 @@
 #![cfg_attr(not(test), no_std)]
-#![feature(str_as_str)] // 允许使用不稳定的 str.as_str() 方法，尝试解决 path.rs 中的 lint
+#![feature(str_as_str)]
 
 // 引入 alloc crate，用于动态分配，例如 Vec, String, Box
 extern crate alloc;

@@ -136,7 +136,7 @@ bitflags::bitflags! {
 /// 用于 `read_dir` 等操作返回目录内容。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectoryEntry {
-    // [待办事项]: 未来应考虑支持 OsString 或 Vec<u8> 以便更好地处理非UTF-8编码的文件名。
+    // [TODO]: 未来应考虑支持 OsString 或 Vec<u8> 以便更好地处理非UTF-8编码的文件名。
     // 当前为简化实现，假设VFS内部文件名是UTF-8编码的字符串。
     pub name: AllocString,     // 条目名称 (文件名或目录名)
     pub vnode_id: VnodeId,     // 此条目指向的 Vnode 的 ID

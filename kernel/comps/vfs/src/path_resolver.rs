@@ -105,6 +105,7 @@ impl VfsManager {
     ///
     /// # 返回
     /// 解析到的最终Vnode
+    /// [TODO]: 递归转迭代，以去掉Box::pin()分配
     pub(crate) async fn resolve_path_segments_within_fs(
         self_arc: Arc<Self>,
         mut current_vnode: Arc<dyn AsyncVnode + Send + Sync>,

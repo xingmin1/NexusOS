@@ -14,19 +14,109 @@
 use nexus_error::error_stack::{Result as ErrorStackResult};
 pub use nexus_error::{Errno};
 use alloc::format;
+use alloc::string::ToString;
 pub use nexus_error::error_stack::*;
 
 pub type VfsResult<T> = ErrorStackResult<T, KernelError>;
 pub type KernelError = nexus_error::Error;
 
+// 使用内联函数，是为了错误的代码的文件和行号指到调用的位置，而不是本函数的位置的定义位置.
+#[inline(always)]
 pub fn vfs_err_unsupported(operation: &'static str) -> Report<nexus_error::Error> {
     Report::new(
         nexus_error::Error::with_message(Errno::ENOSYS, operation)
     )
 }
 
+#[inline(always)]
 pub fn vfs_err_invalid_argument(operation: impl AsRef<str>, reason: impl AsRef<str>) -> Report<nexus_error::Error> {
     Report::new(
         nexus_error::Error::new(Errno::EINVAL)
     ).attach_printable(format!("{}: {}", operation.as_ref(), reason.as_ref()))
+}
+
+#[inline(always)]
+pub fn vfs_err_not_found(resource_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::ENOENT, "Resource not found")
+    ).attach_printable(resource_description.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_io_error(context: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::EIO, "I/O Error")
+    ).attach_printable(context.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_not_dir<S: AsRef<str>>(path_description: S) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::ENOTDIR, "Not a directory")
+    ).attach_printable(path_description.as_ref().to_string())
+}
+
+/// 创建一个表示未实现功能的错误
+#[inline(always)]
+pub fn vfs_err_not_implemented<S: AsRef<str>>(operation_description: S) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::ENOSYS, "Operation not implemented")
+    ).attach_printable(operation_description.as_ref().to_string())
+}
+
+/// 为未实现的功能创建错误的宏
+#[macro_export]
+macro_rules! vfs_err_not_implemented {
+    ($($arg:tt)*) => {
+        $crate::verror::vfs_err_not_implemented(format!($($arg)*))
+    };
+}
+
+#[inline(always)]
+pub fn vfs_err_is_dir(path_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::EISDIR, "Is a directory")
+    ).attach_printable(path_description.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_already_exists(path_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::EEXIST, "Already exists")
+    ).attach_printable(path_description.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_not_empty(path_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::ENOTEMPTY, "Directory not empty")
+    ).attach_printable(path_description.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_name_too_long(filename: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::ENAMETOOLONG, "Name too long")
+    ).attach_printable(filename.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_no_space(device_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::ENOSPC, "No space left on device")
+    ).attach_printable(device_description.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_permission_denied(operation_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::EPERM, "Permission denied") // Or EACCES
+    ).attach_printable(operation_description.as_ref().to_string())
+}
+
+#[inline(always)]
+pub fn vfs_err_invalid_path(path_description: impl AsRef<str>) -> Report<KernelError> {
+    Report::new(
+        KernelError::with_message(Errno::EINVAL, "Invalid path")
+    ).attach_printable(path_description.as_ref().to_string())
 }

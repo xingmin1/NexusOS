@@ -1,4 +1,4 @@
-#![cfg_attr(not(test), no_std)]
+#![no_std]
 #![feature(str_as_str)]
 
 // 引入 alloc crate，用于动态分配，例如 Vec, String, Box
@@ -46,6 +46,11 @@ pub mod manager;
 /// 实现路径解析的核心逻辑，被VfsManager使用。
 mod path_resolver;
 
+/// 文件系统具体实现模块。
+///
+/// 包含不同文件系统的实现，如内存文件系统等。
+pub mod impls;
+
 // 从各个模块中导出常用类型，方便使用
 pub use path::{VfsPath, VfsPathBuf};
 pub use traits::{AsyncFileSystem, AsyncVnode, AsyncFileHandle, AsyncDirHandle, AsyncFileSystemProvider, AsyncBlockDevice};
@@ -53,4 +58,5 @@ pub use types::{OpenFlags, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, 
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
+pub use impls::memfs::{InMemoryFsProvider, get_memfs_provider};
 

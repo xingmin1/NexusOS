@@ -11,7 +11,7 @@ use crate::arch::timer::TIMER_FREQ;
 ///
 /// A jiffy represents one tick of the system timer interrupt,
 /// whose frequency is equal to [`TIMER_FREQ`] Hz.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Jiffies(u64);
 
 pub(crate) static ELAPSED: AtomicU64 = AtomicU64::new(0);

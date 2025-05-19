@@ -1,0 +1,16 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+edition = "2021"
+# authors = ["Your Name <you@example.com>"] # 可选
+# description = "Asynchronous Virtual File System for ostd/kernel" # 可选
+# license = "..." # 可选
+
+[dependencies]
+# 路径根据实际项目结构调整
+bitflags = "2.4.0"
+id-alloc = { path = "../../../ostd/libs/id-alloc" } 
+ostd = { path = "../../../ostd" } 
+nexus-error = { path = "../../libs/nexus-error" } 
+async-trait = "0.1.88"
+error-stack = { version = "0.5.0", default-features = false }

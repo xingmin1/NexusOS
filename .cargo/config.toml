@@ -1,0 +1,13 @@
+# .cargo/config.toml
+
+[build]
+target = "riscv64gc-unknown-none-elf"
+# RUSTFLAGS from rust-analyzer.check.extraEnv
+# 使用 ["--check-cfg", "cfg(ktest)", "--cfg", "ktest"] 这种更标准的数组形式
+# rustflags = ["--check-cfg=cfg(ktest)", "--cfg=ktest"]
+
+[unstable]
+# from -Zbuild-std=core,alloc,compiler_builtins
+build-std = ["core", "alloc", "compiler_builtins"]
+# from -Zbuild-std-features=compiler-builtins-mem
+build-std-features = ["compiler-builtins-mem"]

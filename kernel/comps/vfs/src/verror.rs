@@ -11,11 +11,13 @@
 // 使用 extern crate alloc; 如果是在 no_std 环境且 alloc 不是全局可用的
 // extern crate alloc;
 
-use nexus_error::error_stack::{Report, Result as ErrorStackResult};
-use nexus_error::{Errno};
+use nexus_error::error_stack::{Result as ErrorStackResult};
+pub use nexus_error::{Errno};
 use alloc::format;
+pub use nexus_error::error_stack::*;
 
-pub type VfsResult<T> = ErrorStackResult<T, nexus_error::Error>;
+pub type VfsResult<T> = ErrorStackResult<T, KernelError>;
+pub type KernelError = nexus_error::Error;
 
 pub fn vfs_err_unsupported(operation: &'static str) -> Report<nexus_error::Error> {
     Report::new(

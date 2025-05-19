@@ -31,9 +31,26 @@ pub mod types;
 /// 定义了 VFS 操作可能产生的标准错误枚举和结果类型。
 pub mod verror;
 
-// [[TODO]]: 考虑是否需要 pub use 一些常用类型到 crate 根级别，以方便使用。
-// 例如:
-// pub use path::{VfsPath, VfsPathBuf};
-// pub use traits::{FileHandle, Filesystem, Vnode};
-// pub use types::{OpenFlags, VnodeType, VnodeMetadata};
-// pub use verror::{VfsError, VfsResult};
+/// VFS 缓存模块 (`VnodeCache`, `DentryCache`)。
+///
+/// 提供VFS性能优化所需的缓存机制。
+pub mod cache;
+
+/// VFS 管理器模块 (`VfsManager`)。
+///
+/// 提供VFS的核心管理功能，包括文件系统挂载、路径解析等。
+pub mod manager;
+
+/// VFS 路径解析模块 (内部)。
+///
+/// 实现路径解析的核心逻辑，被VfsManager使用。
+mod path_resolver;
+
+// 从各个模块中导出常用类型，方便使用
+pub use path::{VfsPath, VfsPathBuf};
+pub use traits::{AsyncFileSystem, AsyncVnode, AsyncFileHandle, AsyncDirHandle, AsyncFileSystemProvider, AsyncBlockDevice};
+pub use types::{OpenFlags, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats};
+pub use verror::{VfsResult};
+pub use manager::{VfsManager, VfsManagerBuilder};
+pub use cache::{VnodeCache, DentryCache};
+

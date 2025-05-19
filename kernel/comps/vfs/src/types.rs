@@ -4,7 +4,7 @@
 // 这些类型用于表示文件系统对象、元数据、操作标志等。
 
 use alloc::collections::BTreeMap;
-use alloc::string::String as AllocString;
+use alloc::string::String;
 use ostd::timer::Jiffies as SystemTime;
 
 /// Vnode (虚拟节点) 的类型枚举。
@@ -22,6 +22,10 @@ pub enum VnodeType {
 }
 
 pub type OsStr = str;
+
+pub type OsString = String;
+
+pub type AllocOsString = OsString;
 
 type Id = usize;
 
@@ -138,7 +142,7 @@ bitflags::bitflags! {
 pub struct DirectoryEntry {
     // [TODO]: 未来应考虑支持 OsString 或 Vec<u8> 以便更好地处理非UTF-8编码的文件名。
     // 当前为简化实现，假设VFS内部文件名是UTF-8编码的字符串。
-    pub name: AllocString,     // 条目名称 (文件名或目录名)
+    pub name: AllocOsString,     // 条目名称 (文件名或目录名)
     pub vnode_id: VnodeId,     // 此条目指向的 Vnode 的 ID
     pub kind: VnodeType,       // 此条目指向的 Vnode 的类型
 }
@@ -149,7 +153,7 @@ pub struct DirectoryEntry {
 #[derive(Debug, Clone)]
 pub struct FilesystemStats {
     pub fs_id: FilesystemId,           // 文件系统ID
-    pub fs_type_name: AllocString,     // 文件系统类型名称 (例如, "memfs", "fat32")
+    pub fs_type_name: AllocOsString,     // 文件系统类型名称 (例如, "memfs", "fat32")
     pub block_size: u64,               // 文件系统块大小 (字节)
     pub total_blocks: u64,             // 文件系统总块数
     pub free_blocks: u64,              // 可供非特权用户使用的空闲块数
@@ -165,7 +169,7 @@ pub struct FilesystemStats {
 /// 存储为键值对字符串，并提供一个特定的 `read_only` 标志。
 #[derive(Clone, Debug, Default)]
 pub struct FsOptions {
-    inner: BTreeMap<AllocString, AllocString>, // 内部存储挂载选项的 BTreeMap
+    inner: BTreeMap<AllocOsString, AllocOsString>, // 内部存储挂载选项的 BTreeMap
     pub read_only: bool,                       // 是否以只读模式挂载
 }
 
@@ -186,7 +190,7 @@ impl FsOptions {
 /// 用于构建 `FsOptions` 实例的构建器模式。
 #[derive(Default, Debug)]
 pub struct FsOptionsBuilder {
-    options: BTreeMap<AllocString, AllocString>, // 存储选项的 BTreeMap
+    options: BTreeMap<AllocOsString, AllocOsString>, // 存储选项的 BTreeMap
     read_only: Option<bool>,                     // 只读标志，None 表示使用默认值 (false)
 }
 
@@ -197,7 +201,7 @@ impl FsOptionsBuilder {
     }
 
     /// 添加一个键值对挂载选项。
-    pub fn option(mut self, key: impl Into<AllocString>, value: impl Into<AllocString>) -> Self {
+    pub fn option(mut self, key: impl Into<AllocOsString>, value: impl Into<AllocOsString>) -> Self {
         self.options.insert(key.into(), value.into());
         self
     }

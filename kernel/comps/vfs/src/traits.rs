@@ -94,6 +94,12 @@ pub trait AsyncVnode: Send + Sync + 'static {
     /// 获取Vnode的元数据。
     async fn metadata(&self) -> VfsResult<VnodeMetadata>;
 
+    /// 检查 Vnode 是否是符号链接
+    /// 默认实现返回 false，具体文件系统应覆盖此方法
+    async fn is_symlink(&self) -> VfsResult<bool> {
+        Ok(false)
+    }
+
     /// 设置Vnode的元数据。
     async fn set_metadata(&self, changes: VnodeMetadataChanges) -> VfsResult<()>;
 

@@ -75,7 +75,7 @@ pub struct VnodeMetadata {
     pub fs_id: FilesystemId,     // 此Vnode所属的文件系统的ID
     pub kind: VnodeType,         // Vnode的类型 (文件、目录等)
     pub size: u64,               // Vnode的大小 (字节，对于文件和符号链接)
-    pub permissions: u16,        // 权限位 (例如，类似POSIX的 mode_t 的低位)
+    pub permissions: FileMode,   // 权限位 (例如，类似POSIX的 mode_t 的低位)
     pub timestamps: Timestamps,    // 时间戳信息 (访问、修改、创建、更改)
     pub uid: u32,                // 用户ID (所有者)
     pub gid: u32,                // 组ID (所有者)
@@ -100,7 +100,7 @@ pub struct TimestampsToSet {
 #[derive(Debug, Clone, Default)]
 pub struct VnodeMetadataChanges {
     pub size: Option<u64>,                    // 新的文件大小 (用于 truncate)
-    pub permissions: Option<u16>,             // 新的权限位
+    pub permissions: Option<FileMode>,             // 新的权限位
     pub timestamps: Option<TimestampsToSet>,  // 要更新的时间戳 (通常是访问和修改时间)
     pub uid: Option<u32>,                     // 新的用户ID
     pub gid: Option<u32>,                     // 新的组ID
@@ -111,27 +111,242 @@ pub struct VnodeMetadataChanges {
     // - `changed` (ctime) 时间戳会在元数据或内容发生更改时由系统自动更新。
 }
 
-bitflags::bitflags! {
-    /// 定义文件打开标志的位域。
-    ///
-    /// 这些标志控制 `open` 操作的行为以及返回的文件句柄的属性。
-    /// 类似于 POSIX `open()` 的 `flags` 参数。
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+
+use bitflags::bitflags;
+
+bitflags! {
+    /// POSIX 文件模式标志 (mode_t)，底层 u16
+    /// 包含 setuid/setgid/sticky 以及 owner/group/other 的 rwx 位
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub struct FileMode: u16 {
+        /// Set-user-ID 位 (S_ISUID)
+        const SETUID        = 0o4000;
+        /// Set-group-ID 位 (S_ISGID)
+        const SETGID        = 0o2000;
+        /// Sticky 位 (S_ISVTX)
+        const STICKY        = 0o1000;
+
+        /// Owner 可读 (S_IRUSR)
+        const OWNER_READ    = 0o0400;
+        /// Owner 可写 (S_IWUSR)
+        const OWNER_WRITE   = 0o0200;
+        /// Owner 可执行 (S_IXUSR)
+        const OWNER_EXECUTE = 0o0100;
+
+        /// Group 可读 (S_IRGRP)
+        const GROUP_READ    = 0o0040;
+        /// Group 可写 (S_IWGRP)
+        const GROUP_WRITE   = 0o0020;
+        /// Group 可执行 (S_IXGRP)
+        const GROUP_EXECUTE = 0o0010;
+
+        /// Others 可读 (S_IROTH)
+        const OTHER_READ    = 0o0004;
+        /// Others 可写 (S_IWOTH)
+        const OTHER_WRITE   = 0o0002;
+        /// Others 可执行 (S_IXOTH)
+        const OTHER_EXECUTE = 0o0001;
+
+        /// 所有权限
+        const ALL_PERMISSIONS = Self::OWNER_READ.bits() | Self::OWNER_WRITE.bits() | Self::OWNER_EXECUTE.bits() |
+            Self::GROUP_READ.bits() | Self::GROUP_WRITE.bits() | Self::GROUP_EXECUTE.bits() |
+            Self::OTHER_READ.bits() | Self::OTHER_WRITE.bits() | Self::OTHER_EXECUTE.bits();
+
+        /// Owner 读写执行权限
+        const OWNER_RWE = Self::OWNER_READ.bits() | Self::OWNER_WRITE.bits() | Self::OWNER_EXECUTE.bits();
+        /// Group 读写执行权限
+        const GROUP_RWE = Self::GROUP_READ.bits() | Self::GROUP_WRITE.bits() | Self::GROUP_EXECUTE.bits();
+        /// Others 读写执行权限
+        const OTHER_RWE = Self::OTHER_READ.bits() | Self::OTHER_WRITE.bits() | Self::OTHER_EXECUTE.bits();
+
+        /// Owner 读执行权限
+        const OWNER_RE = Self::OWNER_READ.bits() | Self::OWNER_EXECUTE.bits();
+        /// Group 读执行权限
+        const GROUP_RE = Self::GROUP_READ.bits() | Self::GROUP_EXECUTE.bits();
+        /// Others 读执行权限
+        const OTHER_RE = Self::OTHER_READ.bits() | Self::OTHER_EXECUTE.bits();
+
+        /// Owner 读写权限
+        const OWNER_RW = Self::OWNER_READ.bits() | Self::OWNER_WRITE.bits();
+        /// Group 读写权限
+        const GROUP_RW = Self::GROUP_READ.bits() | Self::GROUP_WRITE.bits();
+        /// Others 读写权限
+        const OTHER_RW = Self::OTHER_READ.bits() | Self::OTHER_WRITE.bits();    
+    }
+
+    /// POSIX / Linux <fcntl.h> 中定义的 open(2) 标志位
+    #[derive(Debug, Clone, Copy)]
     pub struct OpenFlags: u32 {
-        const READ        = 1 << 0;  // 以只读方式打开
-        const WRITE       = 1 << 1;  // 以只写方式打开
-        const APPEND      = 1 << 2;  // 以追加方式写入 (意味着 WRITE)
-        const CREATE      = 1 << 3;  // 如果文件不存在则创建它
-        const EXCLUSIVE   = 1 << 4;  // (O_EXCL) 与 CREATE 一起使用，确保原子创建
-        const TRUNCATE    = 1 << 5;  // 如果文件存在并且是普通文件，并且以写方式打开，则将其长度截断为0
-        const DIRECTORY   = 1 << 6;  // (O_DIRECTORY) 如果路径不是目录，则打开失败
-        const NOFOLLOW    = 1 << 7;  // (O_NOFOLLOW) 如果路径是符号链接，则不解引用它
-        const DSYNC       = 1 << 8;  // (O_DSYNC) 要求文件数据同步完成才返回
-        const SYNC        = 1 << 9;  // (O_SYNC) 要求文件数据和元数据同步完成才返回
-        const DIRECT_IO   = 1 << 10; // (O_DIRECT) 尝试最小化或避免缓存效果 (直接I/O)
-        
-        // 预定义组合标志
-        const CREATE_NEW  = Self::CREATE.bits() | Self::EXCLUSIVE.bits(); // 等同于 O_CREAT | O_EXCL
+        // ————— 最低两位：访问模式掩码 —————
+        /// 访问模式掩码（最低两位）
+        const ACCMODE   = 0o3;
+        /// 只读（O_RDONLY）
+        const RDONLY    = 0o0;
+        /// 只写（O_WRONLY）
+        const WRONLY    = 0o1;
+        /// 读写（O_RDWR）
+        const RDWR      = 0o2;
+
+        // ————— 文件创建标志 —————
+        /// 如果不存在则创建（O_CREAT）
+        const CREATE    = 0o100;
+        /// 文件存在则报错，仅与 O_CREAT 一起生效（O_EXCL）
+        const EXCL      = 0o200;
+        /// 不成为控制终端（O_NOCTTY）
+        const NOCTTY    = 0o400;
+        /// 截断文件为零长度（O_TRUNC）
+        const TRUNC     = 0o1000;
+        /// 创建匿名临时文件，仅供内部使用（O_TMPFILE）
+        const TMPFILE   = 0o20000000;
+
+        // ————— 文件状态标志 —————
+        /// 追加写入（O_APPEND）
+        const APPEND    = 0o2000;
+        /// 非阻塞 I/O（O_NONBLOCK，即 O_NDELAY）
+        const NONBLOCK  = 0o4000;
+        /// 同步写入数据及元数据（O_SYNC）
+        const SYNC      = 0o4010000;
+        /// 只同步写入数据，不保证元数据（O_DSYNC）
+        const DSYNC     = 0o10000;
+        /// 异步 I/O 通知（O_ASYNC）
+        const ASYNC     = 0o20000;
+        /// 直接 I/O，绕过缓存（O_DIRECT）
+        const DIRECT    = 0o40000;
+
+        // ————— 其他 Linux/POSIX.1-2008 标志 —————
+        /// 必须为目录（O_DIRECTORY）
+        const DIRECTORY = 0o200000;
+        /// 不跟随最后一个符号链接（O_NOFOLLOW）
+        const NOFOLLOW  = 0o400000;
+        /// 打开时不更新访问时间（O_NOATIME）
+        const NOATIME   = 0o1000000;
+        /// 执行新程序时自动关闭（O_CLOEXEC）
+        const CLOEXEC   = 0o2000000;
+
+        // —————（Linux 特有，但 POSIX.1-2008 可选）—————
+        /// 获取文件描述符用于路径操作（O_PATH）
+        const PATH      = 0o10000000;
+        /// 支持大文件（O_LARGEFILE）
+        const LARGEFILE = 0o100000;
+    }
+}
+
+/// 文件访问模式枚举，仅三种互斥模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessMode {
+    ReadOnly,
+    WriteOnly,
+    ReadWrite,
+}
+
+/// 解析用户态传入的 flags 并提供清晰的接口
+#[derive(Debug, Clone, Copy)]
+pub struct FileOpen {
+    /// 原始 flags，便于透传或反向获取
+    raw: u32,
+    /// 访问模式
+    access: AccessMode,
+    /// 除访问模式外的其他标志位
+    flags: OpenFlags,
+}
+
+impl FileOpen {
+    /// 从原始 flags 创建实例
+    pub fn new(raw_flags: u32) -> Self {
+        // 提取访问模式位（最低两位）
+        let mode_bits = raw_flags & OpenFlags::ACCMODE.bits();
+        let access = match mode_bits {
+            b if b == OpenFlags::RDONLY.bits() => AccessMode::ReadOnly,
+            b if b == OpenFlags::WRONLY.bits() => AccessMode::WriteOnly,
+            b if b == OpenFlags::RDWR.bits()   => AccessMode::ReadWrite,
+            _ => AccessMode::ReadOnly, // 可替换为错误处理
+        };
+        // 安全解析已知标志位，忽略未知位
+        let flags = OpenFlags::from_bits_truncate(raw_flags & !OpenFlags::ACCMODE.bits());
+        Self { raw: raw_flags, access, flags }
+    }
+
+    /// 获取原始 flags
+    #[inline]
+    pub fn bits(&self) -> u32 {
+        self.raw
+    }
+
+    /// 获取访问模式
+    #[inline]
+    pub fn access_mode(&self) -> AccessMode {
+        self.access
+    }
+
+    /// 是否可读
+    #[inline]
+    pub fn is_readable(&self) -> bool {
+        matches!(self.access, AccessMode::ReadOnly | AccessMode::ReadWrite)
+    }
+
+    /// 是否可写
+    #[inline]
+    pub fn is_writable(&self) -> bool {
+        matches!(self.access, AccessMode::WriteOnly | AccessMode::ReadWrite)
+    }
+
+    /// 是否包含指定标志
+    #[inline]
+    pub fn has(&self, flag: OpenFlags) -> bool {
+        self.flags.contains(flag)
+    }
+
+    /// 是否需要创建文件
+    #[inline]
+    pub fn should_create(&self) -> bool {
+        self.has(OpenFlags::CREATE)
+    }
+
+    /// 是否为追加模式
+    #[inline]
+    pub fn is_append(&self) -> bool {
+        self.has(OpenFlags::APPEND)
+    }
+
+    /// 是否需要截断文件
+    #[inline]
+    pub fn should_truncate(&self) -> bool {
+        self.has(OpenFlags::TRUNC)
+    }
+
+    /// 是否为排他创建
+    #[inline]
+    pub fn is_exclusive(&self) -> bool {
+        self.has(OpenFlags::EXCL)
+    }
+
+    /// 是否设置 CLOEXEC
+    #[inline]
+    pub fn is_cloexec(&self) -> bool {
+        self.has(OpenFlags::CLOEXEC)
+    }
+}
+
+// 单元测试示例（需 ktest 支持）
+#[cfg(ktest)]
+mod tests {
+    use super::*;
+    use ostd::prelude::ktest;
+
+    #[ktest]
+    fn test_file_open() {
+        // 模拟：O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC
+        let raw = OpenFlags::RDWR.bits()
+                | OpenFlags::CREATE.bits()
+                | OpenFlags::TRUNC.bits()
+                | OpenFlags::CLOEXEC.bits();
+        let fo = FileOpen::new(raw);
+        assert_eq!(fo.access_mode(), AccessMode::ReadWrite);
+        assert!(fo.should_create());
+        assert!(fo.should_truncate());
+        assert!(fo.is_cloexec());
+        assert!(fo.is_writable());
+        assert!(fo.is_readable());
     }
 }
 

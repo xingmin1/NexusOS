@@ -22,8 +22,8 @@ use crate::{
     cache::{DentryCache, VnodeCache},
     path::{VfsPath, VfsPathBuf},
     traits::{AsyncBlockDevice, AsyncFileSystem, AsyncFileSystemProvider, AsyncVnode},
-    types::{FilesystemId, FsOptions, MountId},
-    verror::{vfs_err_invalid_argument, KernelError, VfsResult},
+    types::{FileMode, FilesystemId, FsOptions, MountId},
+    verror::{KernelError, VfsResult}, vfs_err_invalid_argument,
 };
 
 /// VFS管理器结构体
@@ -153,9 +153,9 @@ impl VfsManager {
         let mut providers = self.fs_providers.write().await;
 
         if providers.contains_key(&provider_name) {
-            return Err(vfs_err_invalid_argument(
+            return Err(vfs_err_invalid_argument!(
                 "register_filesystem_provider",
-                format!("文件系统提供者'{}'已注册", provider_name),
+                format!("文件系统提供者'{}'已注册", provider_name)
             ));
         }
 
@@ -174,9 +174,9 @@ impl VfsManager {
         let mut providers = self.fs_providers.write().await;
 
         if !providers.contains_key(fs_type_name) {
-            return Err(vfs_err_invalid_argument(
+            return Err(vfs_err_invalid_argument!(
                 "unregister_filesystem_provider",
-                format!("文件系统提供者'{}'未注册", fs_type_name),
+                format!("文件系统提供者'{}'未注册", fs_type_name)
             ));
         }
 
@@ -207,16 +207,16 @@ impl VfsManager {
 
         // 验证路径是否为绝对路径
         if !target_path.is_absolute() {
-            return Err(vfs_err_invalid_argument("mount", "挂载点必须是绝对路径"));
+            return Err(vfs_err_invalid_argument!("mount", "挂载点必须是绝对路径"));
         }
 
         // 检查挂载点冲突
         {
             let mount_table = self.mount_table.read().await;
             if mount_table.contains_key(&target_path) {
-                return Err(vfs_err_invalid_argument(
+                return Err(vfs_err_invalid_argument!(
                     "mount",
-                    format!("路径'{}'已挂载", target_path),
+                    format!("路径'{}'已挂载", target_path)
                 ));
             }
         }
@@ -616,7 +616,7 @@ impl VfsManager {
     ///
     /// # 返回
     /// 成功则返回Ok(())，失败则返回错误
-    pub async fn mkdir(&self, path_str: &str, permissions: u16) -> VfsResult<()> {
+    pub async fn mkdir(&self, path_str: &str, permissions: FileMode) -> VfsResult<()> {
         // 解析并规范化路径
         let path = VfsPathBuf::new(path_str.to_string())?;
 
@@ -649,5 +649,394 @@ impl VfsManager {
             .attach_printable(format!("创建目录失败"))?;
 
         Ok(())
+    }
+
+    /// 打开文件并返回文件句柄
+    ///
+    /// # 参数
+    /// - `path_str`: 要打开的文件路径
+    /// - `flags`: 打开标志，指定打开模式（如读、写、追加等）
+    ///
+    /// # 返回
+    /// 成功则返回文件句柄，失败则返回错误
+    pub async fn open(
+        &self,
+        path_str: &str,
+        flags: crate::types::OpenFlags,
+    ) -> VfsResult<Arc<dyn crate::traits::AsyncFileHandle + Send + Sync>> {
+        // 获取路径对应的Vnode（如果文件不存在，且设置了CREATE标志，应在get_vnode中处理）
+        // 注意：我们在这里总是跟随最后一个符号链接，因为我们想打开它所指向的实际文件
+        let vnode = self.get_vnode(path_str, true).await?;
+
+        // 打开文件句柄
+        let handle = vnode
+            .clone()
+            .open_file_handle(flags)
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EIO, "打开文件句柄失败")
+            })
+            .attach_printable(format!("无法为 '{}' 打开文件句柄", path_str))?;
+
+        Ok(handle)
+    }
+
+    /// 获取文件的元数据信息
+    ///
+    /// # 参数
+    /// - `path_str`: 要获取元数据的文件路径
+    /// - `follow_symlink`: 如果路径指向符号链接，是否获取目标文件而非链接本身的元数据
+    ///
+    /// # 返回
+    /// 成功则返回文件元数据，失败则返回错误
+    pub async fn stat(
+        &self,
+        path_str: &str,
+        follow_symlink: bool,
+    ) -> VfsResult<crate::types::VnodeMetadata> {
+        // 获取路径对应的Vnode
+        let vnode = self.get_vnode(path_str, follow_symlink).await?;
+
+        // 获取Vnode的元数据
+        let metadata = vnode
+            .metadata()
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EIO, "获取文件元数据失败")
+            })
+            .attach_printable(format!("无法获取 '{}' 的元数据", path_str))?;
+
+        Ok(metadata)
+    }
+
+    /// 删除目录
+    ///
+    /// # 参数
+    /// - `path_str`: 要删除的目录路径
+    ///
+    /// # 返回
+    /// 成功则返回Ok(())，失败则返回错误
+    pub async fn rmdir(&self, path_str: &str) -> VfsResult<()> {
+        // 解析并规范化路径
+        let path = VfsPathBuf::new(path_str.to_string())?;
+
+        // 获取父目录路径
+        let parent_path = path.parent().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("路径 '{}' 没有父目录", path_str))
+        })?;
+
+        // 获取要删除的目录名
+        let dir_name = path.file_name().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("路径 '{}' 没有有效的目录名", path_str))
+        })?;
+
+        // 获取父目录的Vnode
+        let parent_vnode = self
+            .get_vnode(parent_path.as_str(), true)
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EINVAL, "获取父目录Vnode失败")
+            })?;
+
+        // 执行删除操作
+        parent_vnode
+            .clone()
+            .rmdir(dir_name)
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("删除目录 '{}' 失败", path_str))?;
+
+        // 如果有缓存，这里应该对Dentry缓存进行失效处理
+        // TODO: 可能需要类似 invalidate_dentry 的方法
+
+        Ok(())
+    }
+
+    /// 删除文件
+    ///
+    /// # 参数
+    /// - `path_str`: 要删除的文件路径
+    ///
+    /// # 返回
+    /// 成功则返回Ok(())，失败则返回错误
+    pub async fn unlink(&self, path_str: &str) -> VfsResult<()> {
+        // 解析并规范化路径
+        let path = VfsPathBuf::new(path_str.to_string())?;
+
+        // 获取父目录路径
+        let parent_path = path.parent().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("路径 '{}' 没有父目录", path_str))
+        })?;
+
+        // 获取要删除的文件名
+        let file_name = path.file_name().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("路径 '{}' 没有有效的文件名", path_str))
+        })?;
+
+        // 获取父目录的Vnode
+        let parent_vnode = self
+            .get_vnode(parent_path.as_str(), true)
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EINVAL, "获取父目录Vnode失败")
+            })?;
+
+        // 执行删除操作 
+        // unlink操作会删除文件或符号链接，但不会删除目录（应该使用rmdir）
+        parent_vnode
+            .clone()
+            .unlink(file_name)
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("删除文件 '{}' 失败", path_str))?;
+
+        // 如果有缓存，这里应该对Dentry缓存进行失效处理
+        // TODO: 可能需要类似 invalidate_dentry 的方法
+
+        Ok(())
+    }
+
+    /// 重命名文件或目录
+    ///
+    /// # 参数
+    /// - `old_path_str`: 原文件或目录路径
+    /// - `new_path_str`: 新文件或目录路径
+    ///
+    /// # 返回
+    /// 成功则返回Ok(())，失败则返回错误
+    pub async fn rename(&self, old_path_str: &str, new_path_str: &str) -> VfsResult<()> {
+        // 解析并规范化路径
+        let old_path = VfsPathBuf::new(old_path_str.to_string())?;
+        let new_path = VfsPathBuf::new(new_path_str.to_string())?;
+
+        // 获取原路径和新路径的父目录路径
+        let old_parent_path = old_path.parent().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("原路径 '{}' 没有父目录", old_path_str))
+        })?;
+
+        let new_parent_path = new_path.parent().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("新路径 '{}' 没有父目录", new_path_str))
+        })?;
+
+        // 获取原文件名和新文件名
+        let old_name = old_path.file_name().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("原路径 '{}' 没有有效的文件名", old_path_str))
+        })?;
+
+        let new_name = new_path.file_name().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("新路径 '{}' 没有有效的文件名", new_path_str))
+        })?;
+
+        // 获取原路径和新路径的挂载点
+        let old_mount_point = self.find_mount_point_for_path(&old_path).await?;
+        let new_mount_point = self.find_mount_point_for_path(&new_path).await?;
+
+        // 获取原目录和新目录的Vnode
+        let old_parent_vnode = self
+            .get_vnode(old_parent_path.as_str(), true)
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EINVAL, "获取原父目录Vnode失败")
+            })?;
+
+        let new_parent_vnode = self
+            .get_vnode(new_parent_path.as_str(), true)
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EINVAL, "获取新父目录Vnode失败")
+            })?;
+
+        // 检查是否跨文件系统重命名
+        // 如果原目录和新目录所属的文件系统实例不同，那么是跨文件系统操作
+        if old_mount_point.as_str() != new_mount_point.as_str() {
+            // 注意：跨文件系统重命名需要特殊处理
+            return Err(report!(KernelError::new(Errno::EXDEV,))
+                .attach_printable("不支持跨文件系统重命名"));
+            // TODO: 实现跨文件系统重命名，通常需要复制文件内容并删除原文件
+        }
+
+        // 执行重命名操作
+        old_parent_vnode
+            .clone()
+            .rename(old_name, new_parent_vnode.clone(), new_name)
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("重命名 '{}' 到 '{}' 失败", old_path_str, new_path_str))?;
+
+        // 如果有缓存，这里应该对相关的Dentry缓存进行失效处理
+        // TODO: 实现缓存失效逻辑
+
+        Ok(())
+    }
+
+    /// 创建符号链接
+    ///
+    /// # 参数
+    /// - `path_str`: 符号链接路径
+    /// - `target_str`: 符号链接目标路径
+    ///
+    /// # 返回
+    /// 成功则返回Ok(())，失败则返回错误
+    pub async fn symlink(&self, target_str: &str, link_path_str: &str) -> VfsResult<()> {
+        // 解析并规范化符号链接路径
+        let link_path = VfsPathBuf::new(link_path_str.to_string())?;
+
+        // 将目标路径转换为VfsPathBuf
+        let target_path = VfsPathBuf::new(target_str.to_string())?;
+
+        // 获取符号链接的父目录路径
+        let parent_path = link_path.parent().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("路径 '{}' 没有父目录", link_path_str))
+        })?;
+
+        // 获取符号链接的文件名
+        let link_name = link_path.file_name().ok_or_else(|| {
+            report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("路径 '{}' 没有有效的文件名", link_path_str))
+        })?;
+
+        // 获取父目录的Vnode
+        let parent_vnode = self
+            .get_vnode(parent_path.as_str(), true)
+            .await
+            .change_context_lazy(|| {
+                KernelError::with_message(Errno::EINVAL, "获取父目录Vnode失败")
+            })?;
+
+        // 执行创建符号链接操作
+        parent_vnode
+            .clone()
+            .symlink_node(link_name, &target_path)
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("创建符号链接 '{}' 指向 '{}' 失败", link_path_str, target_str))?;
+
+        // 如果有缓存，这里应该对父目录的Dentry缓存进行更新
+        // TODO: 实现缓存更新逻辑
+
+        Ok(())
+    }
+
+    /// 读取符号链接目标路径
+    ///
+    /// # 参数
+    /// - `path_str`: 符号链接路径
+    ///
+    /// # 返回
+    /// 成功则返回符号链接目标路径，失败则返回错误
+    pub async fn readlink(&self, path_str: &str) -> VfsResult<VfsPathBuf> {
+        // 获取符号链接路径对应的Vnode
+        // 注意：指定不跟随符号链接，因为我们要获取符号链接本身
+        let symlink_vnode = self.get_vnode(path_str, false).await?;
+
+        // 检查该节点是否为符号链接
+        let metadata = symlink_vnode.metadata().await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("获取 '{}' 的元数据失败", path_str))?;
+
+        if metadata.kind != crate::types::VnodeType::SymbolicLink {
+            return Err(report!(KernelError::new(Errno::EINVAL,))
+                .attach_printable(format!("'{}' 不是符号链接", path_str)));
+        }
+
+        // 读取符号链接目标
+        symlink_vnode
+            .clone()
+            .readlink()
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("读取符号链接 '{}' 失败", path_str))
+    }
+
+    /// 设置文件元数据
+    ///
+    /// # 参数
+    /// - `path_str`: 要设置元数据的文件路径
+    /// - `changes`: 要应用的元数据更改
+    /// - `follow_symlink`: 是否跟随符号链接
+    ///
+    /// # 返回
+    /// 成功则返回Ok(())，失败则返回错误
+    pub async fn set_metadata(
+        &self,
+        path_str: &str,
+        changes: crate::types::VnodeMetadataChanges,
+        follow_symlink: bool,
+    ) -> VfsResult<()> {
+        // 获取路径对应的Vnode
+        let vnode = self.get_vnode(path_str, follow_symlink).await?;
+
+        // 设置元数据
+        vnode
+            .clone()
+            .set_metadata(changes)
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("设置 '{}' 的元数据失败", path_str))?;
+
+        // 如果有缓存，这里应该对Vnode缓存进行更新
+        // TODO: 实现缓存更新逻辑
+
+        Ok(())
+    }
+
+    /// 读取目录内容
+    ///
+    /// # 参数
+    /// - `path_str`: 目录路径
+    ///
+    /// # 返回
+    /// 成功则返回目录条目列表，失败则返回错误
+    pub async fn readdir(&self, path_str: &str) -> VfsResult<Vec<crate::types::DirectoryEntry>> {
+        // 获取目录路径对应的Vnode
+        let dir_vnode = self.get_vnode(path_str, true).await?;
+
+        // 检查该节点是否为目录
+        let metadata = dir_vnode.metadata().await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("获取 '{}' 的元数据失败", path_str))?;
+
+        if metadata.kind != crate::types::VnodeType::Directory {
+            return Err(report!(KernelError::new(Errno::ENOTDIR,))
+                .attach_printable(format!("'{}' 不是目录", path_str)));
+        }
+
+        // 打开目录句柄
+        let dir_handle = dir_vnode
+            .clone()
+            .open_dir_handle(crate::types::OpenFlags::RDONLY)
+            .await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("打开目录 '{}' 失败", path_str))?;
+
+        // 读取目录内容
+        let mut entries = Vec::new();
+        let mut entry_opt = dir_handle.clone().readdir().await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("读取目录 '{}' 内容失败", path_str))?;
+
+        // 收集所有目录条目
+        while let Some(entry) = entry_opt {
+            entries.push(entry.clone());
+            entry_opt = dir_handle.clone().readdir().await
+                .change_context_lazy(|| KernelError::new(Errno::EIO))
+                .attach_printable(format!("读取目录 '{}' 内容失败", path_str))?;
+        }
+
+        // 关闭目录句柄
+        dir_handle.close().await
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable(format!("关闭目录 '{}' 失败", path_str))?;
+
+        Ok(entries)
     }
 }

@@ -6,18 +6,13 @@ use alloc::sync::{Arc, Weak};
 use async_trait::async_trait;
 use ostd::sync::RwLock;
 
-use crate::{vfs_err_not_implemented, VfsResult};
+use crate::{types::{FileMode, Timestamps}, vfs_err_already_exists, vfs_err_invalid_argument, vfs_err_no_space, vfs_err_not_dir, vfs_err_not_implemented, AsyncFileSystem, VfsResult};
 use crate::{
     path::{VfsPath, VfsPathBuf},
     traits::AsyncVnode,
     types::{
         OpenFlags, OsStr, VnodeId, VnodeMetadata, 
         VnodeMetadataChanges, VnodeType
-    },
-    verror::{
-        vfs_err_already_exists, 
-        vfs_err_no_space,
-        vfs_err_not_dir,
     },
 };
 
@@ -133,7 +128,7 @@ impl AsyncVnode for InMemoryVnode {
         self: Arc<Self>,
         name: &OsStr,
         _kind: VnodeType,
-        _permissions: u16,
+        _permissions: FileMode,
         _rdev: Option<u64>,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
         // 先尝试转换为字符串，便于处理
@@ -146,13 +141,13 @@ impl AsyncVnode for InMemoryVnode {
                 
                 // 检查是否已存在
                 if entries_guard.contains_key(&filename_str.to_string()) {
-                    return Err(vfs_err_already_exists(format!("Entry '{}' already exists in directory {}", filename_str, self.id)));
+                    return Err(vfs_err_already_exists!(format!("Entry '{}' already exists in directory {}", filename_str, self.id)));
                 }
                 
                 // 创建新节点并返回
-                Err(vfs_err_no_space("InMemoryFs out of Inode numbers "))
+                Err(vfs_err_no_space!("InMemoryFs out of Inode numbers "))
             }
-            _ => Err(vfs_err_not_dir(format!("Cannot create entry in Vnode {} because it is not a directory", self.id))),
+            _ => Err(vfs_err_not_dir!(format!("Cannot create entry in Vnode {} because it is not a directory", self.id))),
         }
     }
     
@@ -161,7 +156,7 @@ impl AsyncVnode for InMemoryVnode {
     }
 
     async fn rmdir(self: Arc<Self>, _name: &OsStr) -> VfsResult<()> {
-        Err(vfs_err_no_space("InMemoryFs out of Inode numbers "))
+        Err(vfs_err_no_space!("InMemoryFs out of Inode numbers "))
     }
 
     async fn rename(
@@ -193,10 +188,63 @@ impl AsyncVnode for InMemoryVnode {
     
     async fn mkdir(
         self: Arc<Self>,
-        _name: &OsStr,
-        _permissions: u16,
+        name: &OsStr,
+        permissions: FileMode,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
-        Err(vfs_err_not_implemented!("InMemoryVnode::mkdir "))
+        use crate::types::VnodeType;
+        use crate::vfs_err_already_exists;
+
+        // 1. 检查当前节点是否为目录
+        let InMemoryVnodeKindData::Directory(entries) = &self.kind else {
+            return Err(vfs_err_not_implemented!("mkdir on non-directory node"));
+        };
+
+        // 2. 检查目录是否已存在
+        let name_str = name.as_str();
+        let mut entries_guard = entries.write().await;
+        
+        if entries_guard.contains_key(name_str) {
+            return Err(vfs_err_already_exists!("Directory already exists"));
+        }
+
+        // 3. 获取文件系统引用
+        let fs = self.fs.upgrade().ok_or_else(|| vfs_err_invalid_argument!("Filesystem no longer exists"))?;
+        
+        // 4. 创建新目录的元数据
+        let now = ostd::timer::Jiffies::elapsed();
+        let metadata = VnodeMetadata {
+            vnode_id: 0, // 临时值，将在分配后更新
+            fs_id: fs.id(),
+            kind: VnodeType::Directory,
+            size: 0,
+            permissions: permissions & FileMode::all(), // 只保留权限位
+            timestamps: Timestamps {
+                accessed: now,
+                modified: now,
+                created: now,
+                changed: now,
+            },
+            uid: 0, // root
+            gid: 0, // root
+            nlinks: 2, // . 和 ..
+            rdev: None,
+        };
+
+        // 5. 创建新目录节点
+        let new_dir = Arc::new(InMemoryVnode::new_directory(
+            Arc::downgrade(&fs),
+            0, // 临时ID
+            metadata,
+        ));
+
+        // 6. 将新目录添加到当前目录
+        entries_guard.insert(name_str.to_string(), new_dir.clone());
+
+        // 7. 更新父目录的修改时间
+        // 注意：这里简化处理，实际应该更新 mtime 和 ctime
+        
+        // 8. 返回新创建的目录节点
+        Ok(new_dir as Arc<dyn AsyncVnode + Send + Sync>)
     }
     
     async fn symlink_node(

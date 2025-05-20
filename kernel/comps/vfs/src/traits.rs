@@ -2,11 +2,11 @@
 //!
 //! 本文件定义了 VFS 的核心抽象接口，包括文件系统、Vnode、文件句柄等。
 
-use crate::path::{VfsPath, VfsPathBuf};
+use crate::{path::{VfsPath, VfsPathBuf}, types::FileMode, vfs_err_unsupported};
 use crate::types::{
     DirectoryEntry, FilesystemId, FilesystemStats, FsOptions, MountId, OpenFlags, SeekFrom, VnodeId, VnodeMetadata, VnodeMetadataChanges, VnodeType
 };
-use crate::verror::{vfs_err_unsupported, VfsResult}; // 采用 error_stack 错误链方案，所有错误返回值均为 VfsResult
+use crate::verror::{VfsResult}; // 采用 error_stack 错误链方案，所有错误返回值均为 VfsResult
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use crate::types::OsStr;
@@ -111,7 +111,7 @@ pub trait AsyncVnode: Send + Sync + 'static {
         self: Arc<Self>,
         name: &OsStr,
         kind: VnodeType,
-        permissions: u16,
+        permissions: FileMode,
         rdev: Option<u64>,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>>;
 
@@ -119,7 +119,7 @@ pub trait AsyncVnode: Send + Sync + 'static {
     async fn mkdir(
         self: Arc<Self>,
         name: &OsStr,
-        permissions: u16,
+        permissions: FileMode,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>>;
 
     /// 在目录中创建一个符号链接。
@@ -196,7 +196,7 @@ pub trait AsyncFileHandle: Send + Sync + 'static {
         // 具体实现可以在需要时将地址转换回裸指针。
         // 例如：let argp = _argp_addr as *mut u8;
         // 但在异步上下文中要特别注意指针安全性。
-        Err(vfs_err_unsupported("ioctl").attach_printable("ioctl 命令未实现"))
+        Err(vfs_err_unsupported!("ioctl").attach_printable("ioctl 命令未实现"))
     }
 }
 

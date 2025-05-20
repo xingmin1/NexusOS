@@ -2278,9 +2278,11 @@ dependencies = [
  "async-trait",
  "bitflags 2.9.0",
  "id-alloc",
+ "maitake",
  "nexus-error",
  "ostd",
  "tracing 0.1.41",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]

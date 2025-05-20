@@ -51,6 +51,10 @@ mod path_resolver;
 /// 包含不同文件系统的实现，如内存文件系统等。
 pub mod impls;
 
+/// VFS 测试模块
+#[cfg(ktest)]
+pub mod tests;
+
 // 从各个模块中导出常用类型，方便使用
 pub use path::{VfsPath, VfsPathBuf};
 pub use traits::{AsyncFileSystem, AsyncVnode, AsyncFileHandle, AsyncDirHandle, AsyncFileSystemProvider, AsyncBlockDevice};

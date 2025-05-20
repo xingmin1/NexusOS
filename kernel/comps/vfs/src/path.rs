@@ -16,7 +16,7 @@ use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display};
 use core::hash::{Hash, Hasher};
 use core::ops::Deref;
-use crate::verror::{vfs_err_invalid_argument, VfsResult};
+use crate::{verror::VfsResult, vfs_err_invalid_argument};
 use nexus_error::error_stack::Report;
 
 /// 一个借用的、经过验证和规范化的 UTF-8 虚拟文件系统路径切片 (`&VfsPath`)。
@@ -75,10 +75,10 @@ impl VfsPath {
         // 这是一个复杂步骤
         // 目前只进行最小化检查，并保留规范化逻辑的占位符
         if s.is_empty() {
-            return Err(vfs_err_invalid_argument("path_validation", "Path cannot be empty"));
+            return Err(vfs_err_invalid_argument!("path_validation", "Path cannot be empty"));
         }
         if s.contains('\0') {
-            return Err(vfs_err_invalid_argument("path_validation", "Path cannot contain NUL bytes"));
+            return Err(vfs_err_invalid_argument!("path_validation", "Path cannot contain NUL bytes"));
         }
 
         // 规范化逻辑的占位符
@@ -154,7 +154,7 @@ impl VfsPath {
             } else {
                 // 这种情况需要仔细考虑真正空的结果来自非空输入。
                 // 目前假设如果它不是 "/" 或 "."，则是一个错误。
-                return Err(vfs_err_invalid_argument("path_validation", "路径规范化后为空字符串"));
+                return Err(vfs_err_invalid_argument!("path_validation", "路径规范化后为空字符串"));
             }
         }
 
@@ -321,7 +321,7 @@ impl VfsPath {
     pub fn join(&self, component: &str) -> VfsResult<VfsPathBuf> {
         // [TODO]: 验证组件 (不允许斜杠、空字符串、NUL 字符)
         if component.is_empty() || component.contains('/') || component == "." || component == ".." {
-            return Err(vfs_err_invalid_argument("path_component_validation", component));
+            return Err(vfs_err_invalid_argument!("path_component_validation", component));
         }
         let mut new_path = AllocString::with_capacity(self.inner.len() + 1 + component.len());
         new_path.push_str(&self.inner);

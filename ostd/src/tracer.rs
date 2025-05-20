@@ -21,8 +21,8 @@ const LOG_BUFFER_SIZE: usize = 1024;
 /// 日志级别前缀
 const LEVEL_TRACE_PREFIX: &str = "[TRACE]";
 const LEVEL_DEBUG_PREFIX: &str = "[DEBUG]";
-const LEVEL_INFO_PREFIX: &str = "[INFO ]"; // Padded for alignment
-const LEVEL_WARN_PREFIX: &str = "[WARN ]"; // Padded for alignment
+const LEVEL_INFO_PREFIX: &str = "[INFO]";
+const LEVEL_WARN_PREFIX: &str = "[WARN]";
 const LEVEL_ERROR_PREFIX: &str = "[ERROR]";
 
 /// 用于生成唯一的 span ID (全局唯一)

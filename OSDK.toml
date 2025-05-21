@@ -106,3 +106,13 @@ qemu.args = """\
 -no-reboot \
 -rtc base=utc \
 """
+
+[scheme."oscomp-riscv".test.qemu]
+args = """\
+-machine virt \
+-m 1G \
+-nographic \
+-smp 1 \
+-no-reboot \
+-rtc base=utc \
+"""

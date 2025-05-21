@@ -35,9 +35,8 @@ pub enum KtestResult {
 fn main() {
     use ostd::task::TaskOptions;
 
-    let test_task = move || {
+    let test_task = async {
         use alloc::string::ToString;
-
         use ostd::arch::qemu::{exit_qemu, QemuExitCode};
 
         match run_ktests(
@@ -49,7 +48,10 @@ fn main() {
         };
     };
 
-    TaskOptions::new(test_task).data(()).spawn(()).unwrap();
+    let _handle = TaskOptions::new().data(()).spawn(test_task);
+
+    let mut core = ostd::task::scheduler::Core::new();
+    core.run();
 }
 
 #[ostd::ktest::panic_handler]
@@ -128,6 +130,8 @@ fn run_crate_ktests(crate_: &KtestCrate, whitelist: &Option<SuffixTrie>) -> Ktes
         crate_name
     );
 
+    early_print!("whitelist: {:?}\n", whitelist);
+
     let mut passed: usize = 0;
     let mut filtered: usize = 0;
     let mut failed_tests: Vec<(KtestItem, KtestError)> = Vec::new();
@@ -136,6 +140,7 @@ fn run_crate_ktests(crate_: &KtestCrate, whitelist: &Option<SuffixTrie>) -> Ktes
             if let Some(trie) = whitelist {
                 let mut test_path = KtestPath::from(test.info().module_path);
                 test_path.push_back(test.info().fn_name);
+                early_print!("test path: {:?}\n", test_path);
                 if !trie.contains(test_path.iter()) {
                     filtered += 1;
                     continue;

@@ -34,6 +34,7 @@ pub mod cpu;
 mod error;
 pub mod io_mem;
 pub mod logger;
+mod tracer;
 pub mod mm;
 pub mod panic;
 pub mod prelude;
@@ -81,6 +82,8 @@ unsafe fn init() {
     unsafe { mm::heap_allocator::init() };
 
     boot::init_after_heap();
+
+    tracer::init_tracing();
 
     mm::frame::allocator::init();
     mm::kspace::init_kernel_page_table(mm::init_page_meta());

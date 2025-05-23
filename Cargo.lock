@@ -82,7 +82,6 @@ name = "aster-nix"
 version = "0.1.0"
 dependencies = [
  "align_ext",
- "arrayvec",
  "aster-rights",
  "aster-rights-proc",
  "bitflags 2.9.0",
@@ -90,7 +89,6 @@ dependencies = [
  "nexus-error",
  "ostd",
  "tracing 0.1.41",
- "tracing-core 0.1.33",
  "typeflags",
  "typeflags-util",
  "vfs",
@@ -1291,6 +1289,7 @@ version = "0.11.3"
 dependencies = [
  "acpi",
  "align_ext",
+ "arrayvec",
  "bit_field",
  "bitflags 1.3.2",
  "buddy_system_allocator",
@@ -1321,6 +1320,8 @@ dependencies = [
  "smallvec",
  "spin",
  "tdx-guest",
+ "tracing 0.1.41",
+ "tracing-core 0.1.33",
  "unwinding",
  "volatile 0.6.1",
  "x86",

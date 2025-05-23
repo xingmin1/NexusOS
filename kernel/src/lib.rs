@@ -10,7 +10,6 @@
 #![feature(specialization)]
 
 mod error;
-mod kernel_tracer;
 mod thread;
 mod vm;
 
@@ -32,8 +31,6 @@ use nexus_error::{return_errno, return_errno_with_message};
 /// labeled as `#[ostd::main]` will be called.
 #[ostd::main]
 pub fn main() {
-    kernel_tracer::init_tracing();
-
     let _main_span = trace_span!("kernel_main", stage = "initialization").entered();
 
     info!("开始执行内核主函数");

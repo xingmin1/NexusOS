@@ -14,8 +14,6 @@ typeflags = { path = "libs/typeflags" }
 typeflags-util = { path = "libs/typeflags-util" }
 bitflags = "2.4.0"
 tracing = { version = "0.1", default-features = false, features = ["attributes"] }
-tracing-core = { version = "0.1", default-features = false }
-arrayvec = { version = "0.7.6", default-features = false }
 vfs = { path = "comps/vfs" }
 
 

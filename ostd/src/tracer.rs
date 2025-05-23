@@ -4,9 +4,9 @@ use core::{
 };
 
 use arrayvec::ArrayString; // 用于固定大小的栈上字符串
-use ostd::prelude::println;
-use ostd::trap;
-use ostd::{boot::boot_info, cpu_local_cell};
+use crate::prelude::println;
+use crate::trap;
+use crate::{boot::boot_info, cpu_local_cell};
 // For PER_CPU_INDENTATION
 use tracing_core::{
     field::{Field, Visit},

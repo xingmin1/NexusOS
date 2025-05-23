@@ -41,6 +41,9 @@ xarray = { git = "https://github.com/asterinas/xarray", version = "0.1.0" }
 maitake = { path = "libs/maitake", version = "0.1.0" }
 rand_xoshiro = "0.7.0"
 rand = { version = "0.9.1", default-features = false }
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
+tracing-core = { version = "0.1", default-features = false }
+arrayvec = { version = "0.7.6", default-features = false }
 
 [target.x86_64-unknown-none.dependencies]
 x86_64 = "0.14.13"

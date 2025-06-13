@@ -26,7 +26,7 @@ impl VfsManager {
     /// 如果找到匹配的挂载点，返回(文件系统实例, 剩余路径, 挂载点路径)；否则返回None
     pub(crate) async fn find_mount_point_details_for_path(
         self_arc: Arc<Self>,
-        absolute_path: &VfsPath,
+        absolute_path: &VfsPath<'_>,
     ) -> VfsResult<
         Option<(
             Arc<dyn AsyncFileSystem + Send + Sync>, // 文件系统实例
@@ -51,7 +51,7 @@ impl VfsManager {
         let mut best_match_len = 0;
 
         for (mount_point, entry) in mount_table.iter() {
-            if absolute_path.starts_with(mount_point) {
+            if absolute_path.starts_with(mount_point.into()) {
                 let mount_point_str = mount_point.as_str();
                 let len = mount_point_str.len();
 
@@ -71,7 +71,7 @@ impl VfsManager {
             } else {
                 // 移除挂载点前缀
                 // 这里假设VfsPathBuf没有as_path方法，用as_str代替
-                let stripped = absolute_path.strip_prefix(&mount_point).ok_or_else(|| {
+                let stripped = absolute_path.strip_prefix((&mount_point).into()).ok_or_else(|| {
                     report!(KernelError::with_message(Errno::EINVAL, "无法分离路径前缀"))
                 })?;
 
@@ -110,7 +110,7 @@ impl VfsManager {
         self_arc: Arc<Self>,
         mut current_vnode: Arc<dyn AsyncVnode + Send + Sync>,
         parent_of_current_for_symlink_resolution: Arc<dyn AsyncVnode + Send + Sync>,
-        relative_path: &VfsPath,
+        relative_path: &VfsPath<'_>,
         follow_last_symlink: bool,
         symlink_depth: &mut u32,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
@@ -204,11 +204,12 @@ impl VfsManager {
                     .map_err(|_| KernelError::with_message(Errno::EIO, "读取符号链接失败"))?;
 
                 // 处理符号链接目标
-                if link_target.is_absolute() {
+                let link_target_path: VfsPath<'_> = (&link_target).into();
+                if link_target_path.is_absolute() {
                     // 如果是绝对路径，从全局路径解析
                     return self_arc
                         .get_vnode_from_global_path_internal(
-                            &link_target,
+                            &link_target_path,
                             follow_last_symlink,
                             symlink_depth,
                         )
@@ -220,15 +221,16 @@ impl VfsManager {
                     let mut remaining_path = link_target;
 
                     for comp in components {
-                        remaining_path = remaining_path.join(comp)?;
+                        remaining_path = VfsPath::from(&remaining_path).join(comp)?;
                     }
 
                     // 在当前目录上下文中解析相对路径
+                    let remaining_path_vfs: VfsPath<'_> = (&remaining_path).into();
                     return Box::pin(Self::resolve_path_segments_within_fs(
                         self_arc,
                         parent_of_current_for_symlink_resolution.clone(),
                         parent_of_current_for_symlink_resolution,
-                        &remaining_path,
+                        &remaining_path_vfs,
                         follow_last_symlink,
                         symlink_depth,
                     ))
@@ -257,7 +259,7 @@ impl VfsManager {
     /// 解析到的Vnode
     pub(crate) async fn get_vnode_from_global_path_internal(
         self: Arc<Self>,
-        path: &VfsPath,
+        path: &VfsPath<'_>,
         follow_last_symlink: bool,
         symlink_depth: &mut u32,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
@@ -278,11 +280,12 @@ impl VfsManager {
             .change_context_lazy(|| KernelError::with_message(Errno::EIO, "获取文件系统根节点失败"))?;
 
         // 在文件系统内解析剩余路径
+        let remaining_path_vfs: VfsPath<'_> = (&remaining_path).into();
         Box::pin(Self::resolve_path_segments_within_fs(
             self.clone(),
             root_vnode.clone(),
             root_vnode,
-            &remaining_path,
+            &remaining_path_vfs,
             follow_last_symlink,
             symlink_depth,
         ))

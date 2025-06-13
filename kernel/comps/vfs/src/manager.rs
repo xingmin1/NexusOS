@@ -206,7 +206,7 @@ impl VfsManager {
         // 前面执行了新建，已经规范化了，这里实际不需要normalize
 
         // 验证路径是否为绝对路径
-        if !target_path.is_absolute() {
+        if !VfsPath::from(&target_path).is_absolute() {
             return Err(vfs_err_invalid_argument!("mount", "挂载点必须是绝对路径"));
         }
 
@@ -462,7 +462,7 @@ impl VfsManager {
 
         // 当前路径相关的挂载点
         let mount_point = self
-            .find_mount_point_for_path(&path)
+            .find_mount_point_for_path(&VfsPath::from(&path))
             .await
             .change_context_lazy(|| KernelError::with_message(Errno::EINVAL, "查找挂载点失败"))?;
 
@@ -506,7 +506,7 @@ impl VfsManager {
         }
 
         // 在文件系统内部解析路径段
-        let segments = relative_path.components();
+        let segments = VfsPath::from(&relative_path).components();
         let mut current = root_vnode.clone();
 
         // 遍历路径段
@@ -566,7 +566,7 @@ impl VfsManager {
     ///
     /// # 返回
     /// 最匹配的挂载点路径，如果没有匹配的挂载点，则返回根目录 "/"
-    async fn find_mount_point_for_path(&self, path: &VfsPath) -> VfsResult<VfsPathBuf> {
+    async fn find_mount_point_for_path(&self, path: &VfsPath<'_>) -> VfsResult<VfsPathBuf> {
         // 获取挂载表读锁
         let mount_table = self.mount_table.read().await;
 
@@ -621,13 +621,13 @@ impl VfsManager {
         let path = VfsPathBuf::new(path_str.to_string())?;
 
         // 获取父目录路径
-        let parent_path = path.parent().ok_or_else(|| {
+        let parent_path = VfsPath::from(&path).parent().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有父目录", path_str))
         })?;
 
         // 获取目录名
-        let dir_name = path.file_name().ok_or_else(|| {
+        let dir_name = VfsPath::from(&path).file_name().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有有效的目录名", path_str))
         })?;
@@ -674,10 +674,10 @@ impl VfsManager {
                 if flags.contains(crate::types::OpenFlags::CREATE) {
                     // 解析父目录和文件名
                     let path = crate::path::VfsPathBuf::new(path_str.to_string())?;
-                    let parent_path = path.parent().ok_or_else(|| {
+                    let parent_path = VfsPath::from(&path).parent().ok_or_else(|| {
                         report!(KernelError::new(Errno::EINVAL,)).attach_printable("路径没有父目录")
                     })?;
-                    let file_name = path.file_name().ok_or_else(|| {
+                    let file_name = VfsPath::from(&path).file_name().ok_or_else(|| {
                         report!(KernelError::new(Errno::EINVAL,)).attach_printable("无效文件名")
                     })?;
 
@@ -748,13 +748,13 @@ impl VfsManager {
         let path = VfsPathBuf::new(path_str.to_string())?;
 
         // 获取父目录路径
-        let parent_path = path.parent().ok_or_else(|| {
+        let parent_path = VfsPath::from(&path).parent().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有父目录", path_str))
         })?;
 
         // 获取要删除的目录名
-        let dir_name = path.file_name().ok_or_else(|| {
+        let dir_name = VfsPath::from(&path).file_name().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有有效的目录名", path_str))
         })?;
@@ -793,13 +793,13 @@ impl VfsManager {
         let path = VfsPathBuf::new(path_str.to_string())?;
 
         // 获取父目录路径
-        let parent_path = path.parent().ok_or_else(|| {
+        let parent_path = VfsPath::from(&path).parent().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有父目录", path_str))
         })?;
 
         // 获取要删除的文件名
-        let file_name = path.file_name().ok_or_else(|| {
+        let file_name = VfsPath::from(&path).file_name().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有有效的文件名", path_str))
         })?;
@@ -841,30 +841,30 @@ impl VfsManager {
         let new_path = VfsPathBuf::new(new_path_str.to_string())?;
 
         // 获取原路径和新路径的父目录路径
-        let old_parent_path = old_path.parent().ok_or_else(|| {
+        let old_parent_path = VfsPath::from(&old_path).parent().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("原路径 '{}' 没有父目录", old_path_str))
         })?;
 
-        let new_parent_path = new_path.parent().ok_or_else(|| {
+        let new_parent_path = VfsPath::from(&new_path).parent().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("新路径 '{}' 没有父目录", new_path_str))
         })?;
 
         // 获取原文件名和新文件名
-        let old_name = old_path.file_name().ok_or_else(|| {
+        let old_name = VfsPath::from(&old_path).file_name().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("原路径 '{}' 没有有效的文件名", old_path_str))
         })?;
 
-        let new_name = new_path.file_name().ok_or_else(|| {
+        let new_name = VfsPath::from(&new_path).file_name().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("新路径 '{}' 没有有效的文件名", new_path_str))
         })?;
 
         // 获取原路径和新路径的挂载点
-        let old_mount_point = self.find_mount_point_for_path(&old_path).await?;
-        let new_mount_point = self.find_mount_point_for_path(&new_path).await?;
+        let old_mount_point = self.find_mount_point_for_path(&VfsPath::from(&old_path)).await?;
+        let new_mount_point = self.find_mount_point_for_path(&VfsPath::from(&new_path)).await?;
 
         // 获取原目录和新目录的Vnode
         let old_parent_vnode = self
@@ -920,13 +920,13 @@ impl VfsManager {
         let target_path = VfsPathBuf::new(target_str.to_string())?;
 
         // 获取符号链接的父目录路径
-        let parent_path = link_path.parent().ok_or_else(|| {
+        let parent_path = VfsPath::from(&link_path).parent().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有父目录", link_path_str))
         })?;
 
         // 获取符号链接的文件名
-        let link_name = link_path.file_name().ok_or_else(|| {
+        let link_name = VfsPath::from(&link_path).file_name().ok_or_else(|| {
             report!(KernelError::new(Errno::EINVAL,))
                 .attach_printable(format!("路径 '{}' 没有有效的文件名", link_path_str))
         })?;
@@ -942,7 +942,7 @@ impl VfsManager {
         // 执行创建符号链接操作
         parent_vnode
             .clone()
-            .symlink_node(link_name, &target_path)
+            .symlink_node(link_name, &VfsPath::from(&target_path))
             .await
             .change_context_lazy(|| KernelError::new(Errno::EIO))
             .attach_printable(format!("创建符号链接 '{}' 指向 '{}' 失败", link_path_str, target_str))?;

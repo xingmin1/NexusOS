@@ -42,16 +42,69 @@ impl AsyncFileHandle for InMemoryFileHandle {
         self.flags
     }
 
-    async fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
-        Err(vfs_err_not_implemented!("InMemoryFileHandle::read_at "))
+    async fn read_at(&self, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+        if let Some(lock) = self.vnode.file_content_lock() {
+            let content = lock.read().await;
+            let start = core::cmp::min(offset as usize, content.len());
+            let end = core::cmp::min(start + buf.len(), content.len());
+            let slice = &content[start..end];
+            buf[..slice.len()].copy_from_slice(slice);
+            // 更新文件指针
+            let mut pos = self.pos.write().await;
+            *pos = (offset as usize + slice.len()) as u64;
+            Ok(slice.len())
+        } else {
+            Err(crate::vfs_err_invalid_argument!("read_at on non-file vnode"))
+        }
     }
 
-    async fn write_at(&self, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
-        Err(vfs_err_not_implemented!("InMemoryFileHandle::write_at "))
+    async fn write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
+        if let Some(lock) = self.vnode.file_content_lock() {
+            let mut content = lock.write().await;
+            let start = offset as usize;
+            if content.len() < start {
+                content.resize(start, 0);
+            }
+            if content.len() < start + buf.len() {
+                content.resize(start + buf.len(), 0);
+            }
+            content[start..start + buf.len()].copy_from_slice(buf);
+            // 更新元数据大小
+            {
+                let mut meta = self.vnode.metadata_lock().write().await;
+                meta.size = content.len() as u64;
+            }
+            // 更新文件指针
+            let mut pos = self.pos.write().await;
+            *pos = (offset as usize + buf.len()) as u64;
+            Ok(buf.len())
+        } else {
+            Err(crate::vfs_err_invalid_argument!("write_at on non-file vnode"))
+        }
     }
 
-    async fn seek(self: Arc<Self>, _pos: SeekFrom) -> VfsResult<u64> {
-        Err(vfs_err_not_implemented!("InMemoryFileHandle::seek "))
+    async fn seek(self: Arc<Self>, pos: SeekFrom) -> VfsResult<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(off) => off as u64,
+            SeekFrom::Current(delta) => {
+                let cur = *self.pos.read().await;
+                if delta >= 0 {
+                    cur + delta as u64
+                } else {
+                    cur.checked_sub((-delta) as u64).ok_or_else(|| crate::vfs_err_invalid_argument!("seek before start"))?
+                }
+            }
+            SeekFrom::End(delta) => {
+                let size = self.vnode.metadata_lock().read().await.size as i64;
+                let target = size + delta as i64;
+                if target < 0 {
+                    return Err(crate::vfs_err_invalid_argument!("seek before start"));
+                }
+                target as u64
+            }
+        };
+        *self.pos.write().await = new_pos;
+        Ok(new_pos)
     }
 
     async fn flush(&self) -> VfsResult<()> {
@@ -99,7 +152,13 @@ impl AsyncDirHandle for InMemoryDirHandle {
     }
 
     async fn readdir(self: Arc<Self>) -> VfsResult<Option<DirectoryEntry>> {
-        Err(vfs_err_not_implemented!("InMemoryDirHandle::readdir "))
+        let idx = self.current_idx.fetch_add(1, Ordering::SeqCst) as usize;
+        let guard = self.entries.read().await;
+        if idx >= guard.len() {
+            Ok(None)
+        } else {
+            Ok(Some(guard[idx].clone()))
+        }
     }
 
     async fn seek_dir(self: Arc<Self>, offset: u64) -> VfsResult<()> {

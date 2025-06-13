@@ -664,9 +664,36 @@ impl VfsManager {
         path_str: &str,
         flags: crate::types::OpenFlags,
     ) -> VfsResult<Arc<dyn crate::traits::AsyncFileHandle + Send + Sync>> {
-        // 获取路径对应的Vnode（如果文件不存在，且设置了CREATE标志，应在get_vnode中处理）
-        // 注意：我们在这里总是跟随最后一个符号链接，因为我们想打开它所指向的实际文件
-        let vnode = self.get_vnode(path_str, true).await?;
+        // 尝试直接获取 vnode
+        let vnode_res = self.get_vnode(path_str, true).await;
+
+        let vnode = match vnode_res {
+            Ok(v) => v,
+            Err(e) => {
+                // 如果失败且包含 CREATE，则尝试创建
+                if flags.contains(crate::types::OpenFlags::CREATE) {
+                    // 解析父目录和文件名
+                    let path = crate::path::VfsPathBuf::new(path_str.to_string())?;
+                    let parent_path = path.parent().ok_or_else(|| {
+                        report!(KernelError::new(Errno::EINVAL,)).attach_printable("路径没有父目录")
+                    })?;
+                    let file_name = path.file_name().ok_or_else(|| {
+                        report!(KernelError::new(Errno::EINVAL,)).attach_printable("无效文件名")
+                    })?;
+
+                    // 获取父 vnode
+                    let parent_vnode = self.get_vnode(parent_path.as_str(), true).await?;
+                    // 创建文件节点
+                    let new_vnode = parent_vnode
+                        .clone()
+                        .create_node(file_name, crate::types::VnodeType::File, crate::types::FileMode::OWNER_RW | crate::types::FileMode::GROUP_RW | crate::types::FileMode::OTHER_RW, None)
+                        .await?;
+                    new_vnode
+                } else {
+                    return Err(e);
+                }
+            }
+        };
 
         // 打开文件句柄
         let handle = vnode

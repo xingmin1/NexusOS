@@ -20,7 +20,9 @@ members = [
     "kernel/libs/aster-rights-proc",
     "kernel/libs/typeflags",
     "kernel/libs/typeflags-util",
+    "kernel/libs/block-dev",
     "kernel/comps/vfs",
+    "kernel/drivers/virtio-blk",
 ]
 exclude = [
     "osdk",

@@ -8,11 +8,16 @@ pub mod bus;
 pub mod common_device;
 
 use alloc::vec::Vec;
+use alloc::sync::Arc;
 
 use cfg_if::cfg_if;
 
 use self::bus::MmioBus;
 use crate::{sync::GuardSpinLock, trap::IrqLine};
+use crate::drivers::virtio::block::VirtioBlkDriver;
+
+#[cfg(target_arch = "riscv64")]
+use crate::arch::riscv::{boot::DEVICE_TREE, plic};
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))] {
@@ -28,6 +33,11 @@ pub static MMIO_BUS: GuardSpinLock<MmioBus> = GuardSpinLock::new(MmioBus::new())
 static IRQS: GuardSpinLock<Vec<IrqLine>> = GuardSpinLock::new(Vec::new());
 
 pub(crate) fn init() {
+    // 注册 VirtIO 相关驱动，需在扫描设备之前完成。
+    MMIO_BUS
+        .lock()
+        .register_driver(Arc::new(VirtioBlkDriver::new()));
+
     #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))]
     // SAFETY:
     // This is safe because we are ensuring that the address range 0xFEB0_0000 to 0xFEB0_4000 is valid before this operation.
@@ -42,6 +52,11 @@ pub(crate) fn init() {
     // FIXME: The address 0xFEB0_0000 is obtained from an instance of microvm, and it may not work in other architecture.
     #[cfg(target_arch = "x86_64")]
     iter_range(0xFEB0_0000..0xFEB0_4000);
+
+    // [TODO]: 对 LoongArch 平台，需要解析 FDT 并绑定 GIC IRQ，再调用 iter_range 或等效扫描函数。
+
+    #[cfg(target_arch = "riscv64")]
+    iter_fdt_nodes();
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -76,4 +91,77 @@ fn iter_range(range: Range<usize>) {
             lock.register_mmio_device(device);
         }
     }
+}
+
+#[cfg(target_arch = "riscv64")]
+fn iter_fdt_nodes() {
+    let Some(fdt) = DEVICE_TREE.get() else {
+        log::warn!("[Virtio]: DEVICE_TREE not ready, skip MMIO scan");
+        return;
+    };
+
+    let mut device_count = 0u32;
+    for node in fdt.all_nodes() {
+        if let Some(compatible) = node.compatible() {
+            if compatible.all().any(|s| s == "virtio,mmio") {
+                if let Some(mut reg_iter) = node.reg() {
+                    if let Some(reg) = reg_iter.next() {
+                        let paddr = reg.starting_address as usize;
+
+                        // 解析 IRQ
+                        let irq_id = if let Some(prop) = node.property("interrupts-extended") {
+                            use ostd_pod::Pod;
+
+                            let usizes = prop.as_usize().unwrap();
+                            let bytes = usizes.as_bytes();
+                            if bytes.len() >= 8 {
+                                // 跳过 phandle (前 4 字节)，取第二个 cell
+                                u32::from_be_bytes([
+                                    bytes[4], bytes[5], bytes[6], bytes[7],
+                                ])
+                            } else {
+                                0
+                            }
+                        } else if let Some(prop) = node.property("interrupts") {
+                            use ostd_pod::Pod;
+
+                            let usizes = prop.as_usize().unwrap();
+                            let bytes = usizes.as_bytes();
+                            if bytes.len() >= 4 {
+                                u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        };
+
+                        if irq_id == 0 {
+                            log::warn!("[Virtio]: node {} has no valid IRQ, skip", node.name);
+                            continue;
+                        }
+
+                        // 分配 IRQ line 对应 handle
+                        let handle = match IrqLine::alloc_specific(irq_id as u8) {
+                            Ok(h) => h,
+                            Err(_) => {
+                                log::warn!("[Virtio]: IRQ {} already allocated", irq_id);
+                                continue;
+                            }
+                        };
+
+                        // 启用 PLIC
+                        plic::enable(irq_id);
+
+                        let device = crate::bus::mmio::common_device::MmioCommonDevice::new(paddr, handle);
+
+                        MMIO_BUS.lock().register_mmio_device(device);
+
+                        device_count += 1;
+                    }
+                }
+            }
+        }
+    }
+    log::info!("[Virtio]: FDT scan found {} device(s)", device_count);
 }

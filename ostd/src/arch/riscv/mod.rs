@@ -13,6 +13,7 @@ pub mod qemu;
 pub mod serial;
 pub mod timer;
 pub mod trap;
+pub mod plic;
 
 use core::sync::atomic::Ordering;
 

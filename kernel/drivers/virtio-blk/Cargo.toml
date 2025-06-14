@@ -1,0 +1,12 @@
+# kernel/drivers/virtio-blk/Cargo.toml
+[package]
+name = "virtio-blk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+block-dev = { path = "../../libs/block-dev" }
+ostd       = { path = "../../../ostd" }
+spin       = "0.10.0"
+log        = "0.4"
+int-to-c-enum = { path = "../../../ostd/libs/int-to-c-enum" }

@@ -39,7 +39,7 @@ pub use self::{
     vm_space::VmSpace,
 };
 pub(crate) use self::{
-    frame::meta::init as init_page_meta, kspace::paddr_to_vaddr, page_table::PageTable,
+    frame::meta::init as init_page_meta, kspace::paddr_to_vaddr,
 };
 use crate::arch::mm::PagingConsts;
 

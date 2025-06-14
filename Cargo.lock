@@ -264,6 +264,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-dev"
+version = "0.1.0"
+dependencies = [
+ "ostd",
+ "spin 0.10.0",
+]
+
+[[package]]
 name = "buddy_system_allocator"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -492,6 +500,17 @@ name = "embedded-hal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+
+[[package]]
+name = "enumn"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f9ed6b3789237c8a0c1c505af1c7eb2c560df6186f01b098c3a1064ea532f38"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+]
 
 [[package]]
 name = "equivalent"
@@ -918,7 +937,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -1318,11 +1337,12 @@ dependencies = [
  "sbi-rt",
  "sbi-spec",
  "smallvec",
- "spin",
+ "spin 0.9.8",
  "tdx-guest",
  "tracing 0.1.41",
  "tracing-core 0.1.33",
  "unwinding",
+ "virtio-drivers",
  "volatile 0.6.1",
  "x86",
  "x86_64",
@@ -1757,6 +1777,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
+name = "safe-mmio"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db02a82ad13df46afeba34a4e54065fa912308b9101b060e4422898eac0e06f6"
+dependencies = [
+ "zerocopy 0.8.25",
+]
+
+[[package]]
 name = "sbi-rt"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1865,6 +1894,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1927,6 +1965,26 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567b8a2dae586314f7be2a752ec7474332959c6460e02bde30d702a66d488708"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -2283,6 +2341,31 @@ dependencies = [
  "ostd",
  "tracing 0.1.41",
  "tracing-subscriber 0.3.19",
+]
+
+[[package]]
+name = "virtio-blk"
+version = "0.1.0"
+dependencies = [
+ "block-dev",
+ "int-to-c-enum",
+ "log",
+ "ostd",
+ "spin 0.10.0",
+]
+
+[[package]]
+name = "virtio-drivers"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fe3f779fd88436e27b51540d9563c7454c8c814893a1e6f9bb6138bcac60627"
+dependencies = [
+ "bitflags 2.9.0",
+ "enumn",
+ "log",
+ "safe-mmio",
+ "thiserror",
+ "zerocopy 0.8.25",
 ]
 
 [[package]]

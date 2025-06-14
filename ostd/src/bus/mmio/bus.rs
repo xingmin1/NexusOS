@@ -12,7 +12,7 @@ use super::common_device::MmioCommonDevice;
 use crate::bus::BusProbeError;
 
 /// MMIO device trait
-pub trait MmioDevice: Sync + Send + Debug {
+pub trait MmioDevice: Sync + Send {
     /// Device ID
     fn device_id(&self) -> u32;
 }

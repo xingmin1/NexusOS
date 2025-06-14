@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
+#![allow(clippy::needless_range_loop)]
 
 use alloc::sync::Arc;
-use core::ops::Range;
+use core::{arch::asm, ops::Range};
 
 use cfg_if::cfg_if;
 
@@ -10,8 +11,7 @@ use crate::{
     arch::iommu,
     error::Error,
     mm::{
-        dma::{dma_type, Daddr, DmaType},
-        HasPaddr, Infallible, Paddr, USegment, UntypedMem, VmIo, VmReader, VmWriter, PAGE_SIZE,
+        dma::{dma_type, Daddr, DmaType}, HasPaddr, Infallible, Paddr, USegment, UntypedMem, VmIo, VmReader, VmWriter, PAGE_SIZE
     },
 };
 
@@ -37,7 +37,6 @@ struct DmaStreamInner {
     segment: USegment,
     start_daddr: Daddr,
     /// TODO: remove this field when on x86.
-    #[expect(unused)]
     is_cache_coherent: bool,
     direction: DmaDirection,
 }
@@ -132,37 +131,48 @@ impl DmaStream {
         self.inner.direction
     }
 
-    /// Synchronizes the streaming DMA mapping with the device.
-    ///
-    /// This method should be called under one of the two conditions:
-    /// 1. The data of the stream DMA mapping has been updated by the device side.
-    ///    The CPU side needs to call the `sync` method before reading data (e.g., using [`read_bytes`]).
-    /// 2. The data of the stream DMA mapping has been updated by the CPU side
-    ///    (e.g., using [`write_bytes`]).
-    ///    Before the CPU side notifies the device side to read, it must call the `sync` method first.
-    ///
-    /// [`read_bytes`]: Self::read_bytes
-    /// [`write_bytes`]: Self::write_bytes
-    pub fn sync(&self, _byte_range: Range<usize>) -> Result<(), Error> {
-        cfg_if::cfg_if! {
-            if #[cfg(target_arch = "x86_64")]{
-                // The streaming DMA mapping in x86_64 is cache coherent, and does not require synchronization.
-                // Reference: <https://lwn.net/Articles/855328/>, <https://lwn.net/Articles/2265/>
+    /* ---------- cache / DMA sync ---------- */
+
+    /// Flush or invalidate CPU caches so that `byte_range` of the buffer
+    /// is coherent with DRAM before device access or after device write‑back.
+    pub fn sync(&self, byte_range: Range<usize>) -> Result<(), Error> {
+        if byte_range.end > self.nbytes() {
+            return Err(Error::InvalidArgs);
+        }
+        if self.inner.is_cache_coherent {
+            return Ok(()); // No CPU‑side work needed on coherent platforms.
+        }
+
+        cfg_if! {
+            if #[cfg(target_arch = "x86_64")] {
+                // All mainstream x86 machines are cache‑coherent; nothing to do.
+                Ok(())
+            } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                const CACHE_LINE_SIZE: usize = 64; // conservative default
+                let start_va =
+                    crate::mm::paddr_to_vaddr(self.inner.segment.start_paddr()) as *mut u8;
+
+                // Helper that prefers Zicbom but falls back to a full fence.
+                #[inline(always)]
+                unsafe fn flush_line(addr: *const u8) {
+                    #[cfg(feature = "zicbom")]
+                    asm!("cbo.flush {0}", in(reg) addr); // line‑granular flush
+                    #[cfg(not(feature = "zicbom"))]
+                    asm!("fence rw, rw");                // fallback barrier
+                }
+
+                // Iterate cache lines within requested sub‑range.
+                unsafe {
+                    for offset in byte_range.step_by(CACHE_LINE_SIZE) {
+                        flush_line(start_va.add(offset));
+                    }
+                    // Ensure completion and global visibility.
+                    asm!("fence rw, rw");
+                }
                 Ok(())
             } else {
-                if _byte_range.end > self.nbytes() {
-                    return Err(Error::InvalidArgs);
-                }
-                if self.inner.is_cache_coherent {
-                    return Ok(());
-                }
-                let start_va = crate::mm::paddr_to_vaddr(self.inner.segment.start_paddr()) as *const u8;
-                // TODO: Query the CPU for the cache line size via CPUID, we use 64 bytes as the cache line size here.
-                for i in _byte_range.step_by(64) {
-                    // TODO: Call the cache line flush command in the corresponding architecture.
-                    todo!()
-                }
-                Ok(())
+                // For other non‑coherent architectures supply your own flush here.
+                todo!("DMA cache sync not implemented for this target");
             }
         }
     }

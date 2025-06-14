@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: MPL-2.0
+
+//! VirtIO-Block MMIO 驱动，封装为 [`MmioDriver`] 供总线自动探测。
+
+use alloc::sync::{Arc, Weak};
+use core::ptr::NonNull;
+
+use crate::{
+    bus::{mmio::common_device::MmioCommonDevice, BusProbeError},
+    bus::mmio::{bus::MmioDevice, bus::MmioDriver},
+    trap::IrqLine,
+    io_mem::IoMem,
+};
+
+use spin::Mutex;
+use virtio_drivers::{device::blk::VirtIOBlk, transport::{mmio::{MmioTransport, VirtIOHeader}, DeviceType, Transport}};
+
+use super::hal::HalImpl;
+
+/// 目前仅支持 VirtIO-Block（device_id == 2）。
+#[derive(Debug)]
+pub struct VirtioBlkDriver;
+
+impl VirtioBlkDriver {
+    /// Creates a new driver instance.
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl MmioDriver for VirtioBlkDriver {
+    fn probe(&self, common: MmioCommonDevice) -> core::result::Result<Arc<dyn MmioDevice>, (BusProbeError, MmioCommonDevice)> {
+        let device_id = match common.read_device_id() {
+            Ok(id) => id,
+            Err(_) => return Err((BusProbeError::ConfigurationSpaceError, common)),
+        };
+        // 2 == block device per VirtIO spec
+        if device_id != 2 {
+            return Err((BusProbeError::DeviceNotMatch, common));
+        }
+
+        // Clone IoMem & Irq to move into our own struct.
+        let io_mem: IoMem = common.io_mem().clone();
+        let irq_line: IrqLine = common.irq().clone();
+        let paddr = io_mem.paddr();
+
+        // SAFETY: 已确认这是 virtio-mmio header 区域，长度固定 0x200。
+        let header_ptr = unsafe { NonNull::new_unchecked(crate::mm::paddr_to_vaddr(paddr) as *mut VirtIOHeader) };
+        let transport = match unsafe { MmioTransport::new(header_ptr, io_mem.length()) } {
+            Ok(t) => t,
+            Err(_) => return Err((BusProbeError::ConfigurationSpaceError, common)),
+        };
+
+        // 再次确认类型
+        if transport.device_type() != DeviceType::Block {
+            // 不匹配则返回错误
+            return Err((BusProbeError::DeviceNotMatch, common));
+        }
+
+        // 构造 VirtIO-Blk 设备
+        let blk = match VirtIOBlk::<HalImpl, _>::new(transport) {
+            Ok(b) => b,
+            Err(_) => return Err((BusProbeError::ConfigurationSpaceError, common)),
+        };
+
+        // 使用 spin::Mutex 包装，便于中断回调访问
+        let device_inner = Arc::new(VirtioBlkDevice {
+            blk: Mutex::new(blk),
+            device_id,
+            _io_mem: io_mem.clone(),
+            _irq: irq_line.clone(),
+        });
+
+        // 中断回调：收到 IRQ 后 ack && 触发 blk 驱动内部处理
+        let weak_dev: Weak<VirtioBlkDevice> = Arc::downgrade(&device_inner);
+        let mut irq_line_mut = irq_line.clone();
+        irq_line_mut.on_active(move |_| {
+            if let Some(dev) = weak_dev.upgrade() {
+                let mut guard = dev.blk.lock();
+                let _ = guard.ack_interrupt();
+            }
+        });
+
+        // 返回作为 MmioDevice
+        Ok(device_inner)
+    }
+}
+
+/// 已初始化并可供系统使用的 VirtIO-Blk 设备实现。
+struct VirtioBlkDevice {
+    blk: Mutex<VirtIOBlk<HalImpl, MmioTransport<'static>>>,
+    device_id: u32,
+    // 在结构体里持有这些对象，确保生命周期及映射有效
+    _io_mem: IoMem,
+    _irq: IrqLine,
+}
+
+impl MmioDevice for VirtioBlkDevice {
+    fn device_id(&self) -> u32 {
+        self.device_id
+    }
+}
+
+// [TODO]: 未来可在 `VirtioBlkDevice` 里缓存 `DmaStreamSlice` 用于请求描述符，
+//         按 `DmaDirection` 决定同步策略（ToDevice/FromDevice/Bidirectional）。 

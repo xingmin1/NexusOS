@@ -185,7 +185,20 @@ pub(crate) fn handle_interrupt(interrupt: Interrupt, f: &mut TrapFrame) {
             crate::arch::timer::time_interrupt_handler();
         }
         Interrupt::SupervisorExternal => {
+            use crate::arch::riscv::plic;
             log::trace!("Supervisor External Interrupt");
+
+            loop {
+                let irq_id = plic::claim();
+                if irq_id == 0 {
+                    break;
+                }
+
+                crate::trap::call_irq_callback_functions(f, irq_id as usize);
+
+                // 完成中断
+                plic::complete(irq_id);
+            }
         }
     }
 }

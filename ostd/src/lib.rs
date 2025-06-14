@@ -41,6 +41,7 @@ pub mod prelude;
 pub mod smp;
 pub mod sync;
 pub mod task;
+pub mod drivers;
 pub mod timer;
 pub mod trap;
 pub mod user;

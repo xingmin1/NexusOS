@@ -94,6 +94,10 @@ qemu.args = """\
     -device virtconsole,chardev=mux \
 """
 
+# qemu-system-riscv64 -machine virt -kernel {os_file} -m {mem} -nographic -smp {smp} -bios default -drive file={fs},if=none,format=raw,id=x0 \
+#                     -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 -no-reboot -device virtio-net-device,netdev=net -netdev user,id=net \
+#                     -rtc base=utc \
+#                     -drive file=disk.img,if=none,format=raw,id=x1 -device virtio-blk-device,drive=x1,bus=virtio-mmio-bus.1
 [scheme."oscomp-riscv"]
 boot.method = "qemu-direct"
 build.strip_elf = false
@@ -102,7 +106,12 @@ qemu.args = """\
 -machine virt \
 -m 1G \
 -nographic \
--smp 2 \
+-smp 1 \
+-bios default \
+-drive file=./sdcard-rv.img,if=none,format=raw,id=x0 \
+-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
+-device virtio-net-device,netdev=net \
+-netdev user,id=net \
 -no-reboot \
 -rtc base=utc \
 """

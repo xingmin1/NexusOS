@@ -154,10 +154,18 @@ impl DmaStream {
 
                 // Helper that prefers Zicbom but falls back to a full fence.
                 #[inline(always)]
+                #[allow(unused)]
+                #[allow(unexpected_cfgs)]
                 unsafe fn flush_line(addr: *const u8) {
-                    #[cfg(feature = "zicbom")]
-                    asm!("cbo.flush {0}", in(reg) addr); // line‑granular flush
-                    #[cfg(not(feature = "zicbom"))]
+                    #[cfg(target_feature = "zicbom")]
+                    // asm!("cbo.flush ({0})", in(reg) addr); // line‑granular flush
+                    asm!(
+                        // gcc/LLVM 均接受 0({reg}) 或 ({reg}) 两种形式
+                        "cbo.flush 0({addr})",
+                        addr = in(reg) addr,
+                        options(nostack, preserves_flags, readonly), // 至少加 nostack，必要时加 memory
+                    );
+                    #[cfg(not(target_feature = "zicbom"))]
                     asm!("fence rw, rw");                // fallback barrier
                 }
 

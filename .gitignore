@@ -30,3 +30,4 @@ aster-nix-profile-*.json
 aster-nix-profile-*.folded
 aster-nix-profile-*.svg
 .aider*
+sdcard-rv.img*

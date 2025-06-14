@@ -67,10 +67,12 @@ impl MmioBus {
     }
 
     pub(super) fn register_mmio_device(&mut self, mut mmio_device: MmioCommonDevice) {
+        tracing::debug!("register_mmio_device: {:?}", mmio_device);
         let device_id = mmio_device.read_device_id().unwrap();
         for driver in self.drivers.iter() {
             mmio_device = match driver.probe(mmio_device) {
                 Ok(device) => {
+                    tracing::debug!("register_mmio_device success");
                     debug_assert!(device_id == device.device_id());
                     self.devices.push(device);
                     return;

@@ -3,6 +3,7 @@
 //! VirtIO-Block MMIO 驱动，封装为 [`MmioDriver`] 供总线自动探测。
 
 use alloc::{collections::btree_map::BTreeMap, string::{String, ToString}, sync::Arc};
+use ostd_macros::ktest;
 use core::ptr::NonNull;
 
 use crate::{
@@ -119,3 +120,18 @@ impl MmioDevice for VirtioBlkDevice {
 
 // [TODO]: 未来可在 `VirtioBlkDevice` 里缓存 `DmaStreamSlice` 用于请求描述符，
 //         按 `DmaDirection` 决定同步策略（ToDevice/FromDevice/Bidirectional）。 
+
+#[cfg(ktest)]
+mod test {
+    use super::*;
+
+    #[ktest]
+    fn test_list_block_device() {
+        let _span = tracing::info_span!("list_block_device");
+        let block_device_table = BLOCK_DEVICE_TABLE.lock();
+        tracing::info!("block_device count: {}", block_device_table.len());
+        block_device_table.iter().for_each(|(name, _)| {
+            tracing::info!("{}", name);
+        });
+    }
+}

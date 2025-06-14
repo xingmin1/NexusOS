@@ -2,4 +2,6 @@
 #![no_std]
 
 mod device;
+mod queue;
+
 pub use device::VirtIOBlkDevice;

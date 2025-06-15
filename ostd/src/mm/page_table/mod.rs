@@ -265,6 +265,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> PageTab
     /// Create a new reference to the same page table.
     /// The caller must ensure that the kernel page table is not copied.
     /// This is only useful for IOMMU page tables. Think twice before using it in other cases.
+    #[allow(dead_code)]
     pub unsafe fn shallow_copy(&self) -> Self {
         PageTable {
             root: self.root.clone_shallow(),

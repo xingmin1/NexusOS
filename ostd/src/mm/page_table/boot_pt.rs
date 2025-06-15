@@ -126,6 +126,7 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> BootPageTable<E, C> {
     }
 
     /// Returns the root physical address of the boot page table.
+    #[allow(dead_code)]
     pub(crate) fn root_address(&self) -> Paddr {
         self.root_pt * C::BASE_PAGE_SIZE
     }

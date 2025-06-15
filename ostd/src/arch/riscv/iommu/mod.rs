@@ -23,6 +23,7 @@ pub(crate) fn unmap(_daddr: Daddr) -> Result<(), IommuError> {
     Err(IommuError::NoIommu)
 }
 
+#[allow(dead_code)]
 pub(crate) fn init() -> Result<(), IommuError> {
     // TODO: We will support IOMMU on RISC-V
     Err(IommuError::NoIommu)
@@ -32,6 +33,7 @@ pub(crate) fn has_dma_remapping() -> bool {
     false
 }
 
+#[allow(unused)]
 pub(crate) fn has_interrupt_remapping() -> bool {
     false
 }

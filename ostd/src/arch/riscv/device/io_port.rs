@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! I/O port access.
-
+#![allow(missing_docs)]
 use core::marker::PhantomData;
 
 pub struct WriteOnlyAccess;

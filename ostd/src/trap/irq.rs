@@ -76,8 +76,13 @@ impl IrqLine {
         // 若为外部中断且来自 PLIC，则自动启用
         #[cfg(target_arch = "riscv64")]
         if kind == SourceKind::External && irq::is_plic_source(irq_num) {
-            // plic::set_priority(irq_num as usize, 1);
-            plic::enable(irq_num as u32);
+            let plic = plic::handle();
+
+            use crate::cpu::all_cpus;
+            all_cpus().for_each(|cpu| {
+                plic.enable(cpu.as_usize(), irq_num as u32);
+                plic.set_priority(irq_num as u32, 1);
+            });
         }
 
         Self {

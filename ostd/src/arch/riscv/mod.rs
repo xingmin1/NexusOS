@@ -41,8 +41,12 @@ pub(crate) fn init_on_bsp() {
     }
 
     irq::init();
-    // 为 BSP 初始化其本地 PLIC context
-    unsafe { crate::arch::riscv::plic::per_hart_init(bsp_hart_id as usize); }
+           
+
+    unsafe {
+        // 初始化全局 PLIC
+        crate::arch::riscv::plic::init_global(boot::DEVICE_TREE.get().unwrap());
+    }
     crate::sync::init();
 
     // 在timer::init之前，irq::init之后 初始化SMP子系统

@@ -17,7 +17,7 @@ use crate::{sync::GuardSpinLock, trap::IrqLine};
 use crate::drivers::virtio::block::VirtioBlkDriver;
 
 #[cfg(target_arch = "riscv64")]
-use crate::arch::riscv::{boot::DEVICE_TREE, plic};
+use crate::arch::riscv::boot::DEVICE_TREE;
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))] {
@@ -56,7 +56,9 @@ pub(crate) fn init() {
     // [TODO]: 对 LoongArch 平台，需要解析 FDT 并绑定 GIC IRQ，再调用 iter_range 或等效扫描函数。
 
     #[cfg(target_arch = "riscv64")]
+    tracing::info!("Initializing MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
     iter_fdt_nodes();
+    tracing::info!("Initialized MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -107,11 +109,11 @@ fn iter_fdt_nodes() {
                 if let Some(mut reg_iter) = node.reg() {
                     if let Some(reg) = reg_iter.next() {
                         let paddr = reg.starting_address as usize;
-
+                        tracing::error!("paddr: {:#x}", paddr);
                         // 解析 IRQ
                         let irq_id = if let Some(prop) = node.property("interrupts-extended") {
                             use ostd_pod::Pod;
-
+                            tracing::error!("interrupts-extended: {:?}", prop);
                             let usizes = prop.as_usize().unwrap();
                             let bytes = usizes.as_bytes();
                             if bytes.len() >= 8 {
@@ -123,10 +125,8 @@ fn iter_fdt_nodes() {
                                 0
                             }
                         } else if let Some(prop) = node.property("interrupts") {
-                            use ostd_pod::Pod;
-
-                            let usizes = prop.as_usize().unwrap();
-                            let bytes = usizes.as_bytes();
+                            tracing::error!("interrupts: {:?}", prop);
+                            let bytes = prop.value;
                             if bytes.len() >= 4 {
                                 u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
                             } else {
@@ -149,9 +149,6 @@ fn iter_fdt_nodes() {
                                 continue;
                             }
                         };
-
-                        // 启用 PLIC
-                        plic::enable(irq_id);
 
                         let device = crate::bus::mmio::common_device::MmioCommonDevice::new(paddr, handle);
 

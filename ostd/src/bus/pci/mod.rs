@@ -65,6 +65,7 @@ use crate::sync::{blocking::Mutex, spin::Spinlock};
 pub static PCI_BUS: Mutex<PciBus, Spinlock> =
     Mutex::new_with_raw_mutex(PciBus::new(), Spinlock::new());
 
+#[allow(dead_code)]
 pub(crate) fn init() {
     let mut lock = PCI_BUS.lock();
     for location in PciDeviceLocation::all() {

@@ -35,6 +35,7 @@ unsafe impl Sync for Mapping {}
 
 static MAP: Mutex<BTreeMap<PhysAddr, Mapping>> = Mutex::new(BTreeMap::new());
 
+/// VirtIO-HAL 实现
 pub struct RiscvHal;
 
 /* -------------------------------------------------------------

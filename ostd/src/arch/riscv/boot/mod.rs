@@ -147,9 +147,6 @@ pub extern "C" fn riscv_boot(hart_id: usize, device_tree_paddr: usize) -> ! {
         // 由于 BSP 是第一个调用者，这应该会成功
         DEVICE_TREE.call_once(|| fdt);
 
-        // 初始化全局 PLIC
-        unsafe { crate::arch::riscv::plic::init_global(device_tree_paddr); }
-
         use crate::boot::{call_ostd_main, EarlyBootInfo, EARLY_INFO};
 
         // 安全性：此函数仅由 BSP 调用一次

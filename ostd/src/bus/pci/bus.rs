@@ -72,6 +72,7 @@ impl PciBus {
         self.drivers.push(driver);
     }
 
+    #[allow(dead_code)]
     pub(super) fn register_common_device(&mut self, mut common_device: PciCommonDevice) {
         debug!("Find pci common devices:{:x?}", common_device);
         let device_id = *common_device.device_id();

@@ -18,9 +18,16 @@ use crate::{
 /// The global allocator for software defined IRQ lines.
 pub(crate) static IRQ_ALLOCATOR: Once<GuardSpinLock<IdAlloc>> = Once::new();
 
+/// 中断号类型
 pub type IrqNum = u16;
+
+/// 软件中断号起始值
 pub const SOFTWARE_IRQ_BASE: IrqNum = 1024;
+
+/// 软件中断号容量
 pub const SOFTWARE_IRQ_CAP: usize = 256;
+
+/// 最大中断号
 const MAX_IRQS: usize = SOFTWARE_IRQ_BASE as usize + SOFTWARE_IRQ_CAP;
 
 #[link_section = ".bss.cpu_local"]
@@ -182,6 +189,7 @@ impl IrqLine {
     }
 
     /// Get the IRQ number.
+    #[allow(unused)]
     pub fn num(&self) -> u16 {
         self.irq_num
     }

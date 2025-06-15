@@ -97,6 +97,15 @@ unsafe fn init() {
         mm::kspace::activate_kernel_page_table();
     }
 
+    
+    // 为 BSP 初始化其本地 PLIC context
+    #[cfg(target_arch = "riscv64")]
+    unsafe {
+        tracing::info!("Initializing PLIC for BSP hart {}", arch::boot::bsp_hart_id());
+        crate::arch::riscv::plic::per_hart_init(arch::boot::bsp_hart_id() as usize);
+        tracing::info!("Initialized PLIC for BSP hart {}", arch::boot::bsp_hart_id());
+    }
+
     bus::init();
 
     arch::irq::enable_all_local();

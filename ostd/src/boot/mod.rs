@@ -84,6 +84,7 @@ pub(crate) struct EarlyBootInfo {
     pub(crate) bootloader_name: &'static str,
     pub(crate) kernel_cmdline: &'static str,
     pub(crate) initramfs: Option<&'static [u8]>,
+    #[allow(dead_code)]
     pub(crate) acpi_arg: BootloaderAcpiArg,
     pub(crate) framebuffer_arg: Option<BootloaderFramebufferArg>,
     pub(crate) memory_regions: MemoryRegionArray,

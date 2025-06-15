@@ -56,7 +56,7 @@ impl IrqLine {
         let inner_irq = unsafe { irq::IrqLine::acquire(irq_num) };
         // 将架构层 IrqLine 指针注册到全局 IRQ_TABLE，供 Trap 快路径使用
         unsafe {
-            irq::register_line(irq_num, inner_irq.as_ref() as *const _);
+            irq::register_line(irq_num, *inner_irq.as_ref() as *const _);
         }
         Self {
             irq_num,
@@ -85,6 +85,7 @@ impl IrqLine {
         self.callbacks.is_empty()
     }
 
+    #[allow(unused)]
     pub(crate) fn inner_irq(&self) -> &'static irq::IrqLine {
         &self.inner_irq
     }

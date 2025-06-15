@@ -84,7 +84,7 @@ fn do_inter_processor_call(_trapframe: &TrapFrame) {
 }
 
 pub(super) fn init() {
-    let mut irq = IrqLine::alloc().expect("Failed to allocate IRQ line for inter-processor call");
+    let mut irq = IrqLine::alloc_software().expect("failed alloc IPI");
     irq.on_active(do_inter_processor_call);
     INTER_PROCESSOR_CALL_IRQ.call_once(|| irq);
 }

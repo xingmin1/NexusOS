@@ -3,6 +3,7 @@
 //! Interrupts.
 use alloc::{boxed::Box, fmt::Debug, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicPtr, Ordering};
+use crate::trap::irq::IrqNum;
 
 use crossbeam_queue::ArrayQueue;
 use id_alloc::IdAlloc;
@@ -30,27 +31,27 @@ static IRQ_TABLE: [AtomicPtr<IrqLine>; MAX_IRQS] = {
 };
 
 #[inline]
-pub(crate) unsafe fn register_line(n: u8, p: *const IrqLine) {
+pub(crate) unsafe fn register_line(n: IrqNum, p: *const IrqLine) {
     IRQ_TABLE[n as usize].store(p as *mut IrqLine, Ordering::Release);
 }
 
 #[inline]
-pub(crate) unsafe fn unregister_line(n: u8) {
+pub(crate) unsafe fn unregister_line(n: IrqNum) {
     IRQ_TABLE[n as usize].store(core::ptr::null_mut(), Ordering::Release);
 }
 
 #[inline]
-pub(crate) fn is_slot_empty(n: u8) -> bool {
+pub(crate) fn is_slot_empty(n: IrqNum) -> bool {
     IRQ_TABLE[n as usize].load(Ordering::Acquire).is_null()
 }
 
-pub(crate) fn is_plic_source(id: u8) -> bool {
+pub(crate) fn is_plic_source(id: IrqNum) -> bool {
     id != 0 && (id as usize) < SOFTWARE_IRQ_BASE as usize
 }
 
 static SOFT_ALLOC: Once<GuardSpinLock<IdAlloc>> = Once::new();
 
-pub(crate) fn alloc_soft_irq() -> Option<u8> {
+pub(crate) fn alloc_soft_irq() -> Option<IrqNum> {
     SOFT_ALLOC
         .get()
         .unwrap()
@@ -62,7 +63,7 @@ pub(crate) fn alloc_soft_irq() -> Option<u8> {
 pub(crate) static IRQ_LIST: Once<Vec<IrqLine>> = Once::new();
 
 cpu_local! {
-    pub(crate) static CPU_IPI_QUEUES: Once<ArrayQueue<u8>> = Once::new();
+    pub(crate) static CPU_IPI_QUEUES: Once<ArrayQueue<IrqNum>> = Once::new();
 }
 
 pub(crate) fn init() {
@@ -151,7 +152,7 @@ impl Debug for CallbackElement {
 /// An interrupt request (IRQ) line.
 #[derive(Debug)]
 pub(crate) struct IrqLine {
-    pub(crate) irq_num: u8,
+    pub(crate) irq_num: IrqNum,
     pub(crate) callback_list: GuardSpinLock<Vec<CallbackElement>>,
 }
 
@@ -163,8 +164,22 @@ impl IrqLine {
     /// This function is marked unsafe as manipulating interrupt lines is
     /// considered a dangerous operation.
     #[expect(clippy::redundant_allocation)]
-    pub unsafe fn acquire(irq_num: u8) -> Arc<&'static Self> {
-        Arc::new(IRQ_LIST.get().unwrap().get(irq_num as usize).unwrap())
+    pub unsafe fn acquire(irq_num: IrqNum) -> Arc<&'static Self> {
+        let idx = irq_num as usize;
+        let ptr = IRQ_TABLE[idx].load(Ordering::Acquire);
+
+        let line_ref: &'static IrqLine = if ptr.is_null() {
+            let new_line = Box::leak(Box::new(IrqLine {
+                irq_num,
+                callback_list: GuardSpinLock::new(Vec::new()),
+            }));
+            IRQ_TABLE[idx].store(new_line as *mut _, Ordering::Release);
+            new_line
+        } else {
+            &*ptr
+        };
+
+        Arc::new(line_ref)
     }
 
     /// Get the IRQ number.
@@ -206,20 +221,21 @@ impl IrqLine {
 #[must_use]
 #[derive(Debug)]
 pub struct IrqCallbackHandle {
-    irq_num: u8,
+    irq_num: IrqNum,
     id: usize,
 }
 
 impl Drop for IrqCallbackHandle {
     fn drop(&mut self) {
-        let mut a = IRQ_LIST
-            .get()
-            .unwrap()
-            .get(self.irq_num as usize)
-            .unwrap()
-            .callback_list
-            .lock();
-        a.retain(|item| item.id != self.id);
+        unsafe {
+            let ptr = IRQ_TABLE[self.irq_num as usize].load(Ordering::Acquire);
+            if !ptr.is_null() {
+                (*ptr)
+                    .callback_list
+                    .lock()
+                    .retain(|item| item.id != self.id);
+            }
+        }
         CALLBACK_ID_ALLOCATOR.get().unwrap().lock().free(self.id);
     }
 }
@@ -244,7 +260,7 @@ impl From<sbi_spec::binary::Error> for IpiSendError {
 /// # 安全性
 ///
 /// 调用者需确保 CPU ID 和中断号对应的操作是安全的
-pub(crate) unsafe fn send_ipi(cpu_id: CpuId, irq_num: u8) -> Result<(), IpiSendError> {
+pub(crate) unsafe fn send_ipi(cpu_id: CpuId, irq_num: IrqNum) -> Result<(), IpiSendError> {
     let hart_id = cpu_id.as_usize();
     crate::early_println!("send_ipi: send IPI to CPU {}", hart_id);
 

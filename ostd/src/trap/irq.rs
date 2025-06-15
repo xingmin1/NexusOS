@@ -2,9 +2,11 @@
 
 use core::fmt::Debug;
 use smallvec::SmallVec;
+#[cfg(target_arch = "riscv64")]
+use crate::arch::riscv::plic;
 
 use crate::{
-    arch::irq::{self, IrqCallbackHandle, IRQ_ALLOCATOR},
+    arch::irq::{self, IrqCallbackHandle},
     prelude::*,
     sync::GuardTransfer,
     trap::TrapFrame,
@@ -22,9 +24,18 @@ pub type IrqCallbackFunction = dyn Fn(&TrapFrame) + Sync + Send + 'static;
 /// [`alloc`]: Self::alloc
 /// [`alloc_specific`]: Self::alloc_specific
 #[derive(Debug)]
+pub type IrqNum = u16;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SourceKind {
+    External,
+    Software,
+}
+
 #[must_use]
 pub struct IrqLine {
-    irq_num: u8,
+    irq_num: IrqNum,
+    kind: SourceKind,
     #[expect(clippy::redundant_allocation)]
     inner_irq: Arc<&'static irq::IrqLine>,
     callbacks: SmallVec<[IrqCallbackHandle; 4]>,
@@ -47,26 +58,32 @@ impl IrqLine {
         let Some(irq_num) = IRQ_ALLOCATOR.get().unwrap().lock().alloc() else {
             return Err(Error::NotEnoughResources);
         };
-        Ok(Self::new(irq_num as u8))
+        Ok(Self::new(irq_num as IrqNum, SourceKind::External))
     }
 
-    fn new(irq_num: u8) -> Self {
-        // SAFETY: The IRQ number is allocated through `RecycleAllocator`, and it is guaranteed that the
-        // IRQ is not one of the important IRQ like cpu exception IRQ.
+    fn new(irq_num: IrqNum, kind: SourceKind) -> Self {
+        // SAFETY: IRQ 号由上层逻辑保证合法
         let inner_irq = unsafe { irq::IrqLine::acquire(irq_num) };
-        // 将架构层 IrqLine 指针注册到全局 IRQ_TABLE，供 Trap 快路径使用
-        unsafe {
-            irq::register_line(irq_num, *inner_irq.as_ref() as *const _);
+        // 注册到全局快查表
+        unsafe { irq::register_line(irq_num, inner_irq.as_ref() as *const _) };
+
+        // 若为外部中断且来自 PLIC，则自动启用
+        #[cfg(target_arch = "riscv64")]
+        if kind == SourceKind::External && irq::is_plic_source(irq_num) {
+            plic::set_priority(irq_num as usize, 1);
+            plic::enable(irq_num as usize);
         }
+
         Self {
             irq_num,
+            kind,
             inner_irq,
             callbacks: SmallVec::new(),
         }
     }
 
     /// Gets the IRQ number.
-    pub fn num(&self) -> u8 {
+    pub fn num(&self) -> IrqNum {
         self.irq_num
     }
 
@@ -95,6 +112,7 @@ impl Clone for IrqLine {
     fn clone(&self) -> Self {
         Self {
             irq_num: self.irq_num,
+            kind: self.kind,
             inner_irq: self.inner_irq.clone(),
             callbacks: SmallVec::new(),
         }
@@ -103,12 +121,17 @@ impl Clone for IrqLine {
 
 impl Drop for IrqLine {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.inner_irq) == 1 {
-            IRQ_ALLOCATOR
-                .get()
-                .unwrap()
-                .lock()
-                .free(self.irq_num as usize);
+        if Arc::strong_count(&self.inner_irq) != 1 {
+            return;
+        }
+
+        // 取消注册
+        unsafe { irq::unregister_line(self.irq_num) };
+
+        // 若是外部中断且来自 PLIC，则关闭
+        #[cfg(target_arch = "riscv64")]
+        if self.kind == SourceKind::External && irq::is_plic_source(self.irq_num) {
+            plic::disable(self.irq_num as usize);
         }
     }
 }

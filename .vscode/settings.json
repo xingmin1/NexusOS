@@ -35,6 +35,6 @@
         "**/CVS": false,
         "**/Thumbs.db": false
     },
-    "commentTranslate.hover.enabled": false,
+    "commentTranslate.hover.enabled": true,
     "rust-analyzer.imports.preferNoStd": true
 }

@@ -16,9 +16,9 @@ use crate::{
 use spin::Mutex;
 use virtio_drivers::{device::blk::VirtIOBlk, transport::{mmio::{MmioTransport, VirtIOHeader}, DeviceType, Transport}};
 
-use super::hal::HalImpl;
+use super::hal::RiscvHal;
 
-static BLOCK_DEVICE_TABLE: Mutex<BTreeMap<String, Arc<Mutex<VirtIOBlk<HalImpl, MmioTransport<'static>>>>>> = Mutex::new(BTreeMap::new());
+static BLOCK_DEVICE_TABLE: Mutex<BTreeMap<String, Arc<Mutex<VirtIOBlk<RiscvHal, MmioTransport<'static>>>>>> = Mutex::new(BTreeMap::new());
 
 /// 目前仅支持 VirtIO-Block（device_id == 2）。
 #[derive(Debug)]
@@ -61,7 +61,7 @@ impl MmioDriver for VirtioBlkDriver {
         }
 
         // 构造 VirtIO-Blk 设备
-        let mut blk = match VirtIOBlk::<HalImpl, _>::new(transport) {
+        let mut blk = match VirtIOBlk::<RiscvHal, _>::new(transport) {
             Ok(b) => b,
             Err(_) => return Err((BusProbeError::ConfigurationSpaceError, common)),
         };
@@ -98,14 +98,14 @@ impl MmioDriver for VirtioBlkDriver {
 }
 
 /// 获取 VirtIO-Blk 设备
-pub fn get_block_device(device_name: &str) -> Option<Arc<Mutex<VirtIOBlk<HalImpl, MmioTransport<'static>>>>> {
+pub fn get_block_device(device_name: &str) -> Option<Arc<Mutex<VirtIOBlk<RiscvHal, MmioTransport<'static>>>>> {
     let block_device_table = BLOCK_DEVICE_TABLE.lock();
     block_device_table.get(device_name).cloned()
 }
 
 /// 已初始化并可供系统使用的 VirtIO-Blk 设备实现。
 struct VirtioBlkDevice {
-    _blk: Arc<Mutex<VirtIOBlk<HalImpl, MmioTransport<'static>>>>,
+    _blk: Arc<Mutex<VirtIOBlk<RiscvHal, MmioTransport<'static>>>>,
     device_id: u32,
     // 在结构体里持有这些对象，确保生命周期及映射有效
     _io_mem: IoMem,

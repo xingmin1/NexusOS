@@ -1,96 +1,155 @@
 // SPDX-License-Identifier: MPL-2.0
+//! VirtIO‑drivers ↔ OSTD (RISC‑V) HAL ‑‑ *no‑IOMMU* version.
 
-//! HAL implementation required by `virtio-drivers`.
-//!
-//! 目前仅在 RISC-V 平台测试，通过直接物理恒等映射实现。
-//! 后续可根据不同架构增加 IOMMU、缓存一致性等处理。
+use alloc::{collections::BTreeMap};
+use core::{
+    ptr::{self, NonNull},
+};
 
-use core::ptr::NonNull;
-use virtio_drivers::{Hal, PhysAddr};
-use virtio_drivers::BufferDirection;
+use spin::Mutex;
+use virtio_drivers::{BufferDirection, Hal, PhysAddr, PAGE_SIZE};
 
-use crate::mm::HasPaddr;
-// 使用内核现有的 DMA 抽象，避免内存泄漏并简化缓存/一致性处理。
-use crate::mm::{DmaStream, DmaDirection, paddr_to_vaddr, frame::allocator::FrameAllocOptions};
+use crate::mm::{
+    dma::{DmaDirection, DmaStream},
+    frame::{allocator::FrameAllocOptions, Segment},
+    kspace::{paddr_to_vaddr, LINEAR_MAPPING_BASE_VADDR},
+    HasPaddr,
+};
 
-use alloc::collections::BTreeMap;
-use crate::sync::GuardSpinLock;
-use spin::Once;
+/// 内部状态：把 paddr 映射到“要不要做 bounce 以及附带数据”。
+enum Mapping {
+    /// 需要回写的 bounce‑buffer。
+    Bounce {
+        stream: DmaStream,
+        orig_ptr: *mut u8,
+        len: usize,
+        dir: BufferDirection,
+    },
+    /// 直接映射，无需任何后续处理。
+    Direct,
+}
 
-// -----------------------------------------------------------------------------
-//  全局表：追踪 `dma_alloc` 创建的 DMA 映射。
-// -----------------------------------------------------------------------------
+// 仅传递裸地址，受互斥锁保护，声明为线程安全
+unsafe impl Send for Mapping {}
+unsafe impl Sync for Mapping {}
 
-// [TODO]: 若支持多核并发更高，可改用更细粒度锁或 lock-free 结构。
-static DMA_ALLOCS: Once<GuardSpinLock<BTreeMap<PhysAddr, DmaStream>>> = Once::new();
+static MAP: Mutex<BTreeMap<PhysAddr, Mapping>> = Mutex::new(BTreeMap::new());
 
-/// 简易 HAL。
-///
-/// - DMA 分配：直接向物理内存分配连续页，零填充。
-/// - Dealloc: 当前实现直接忽略（泄漏），后续可补充记账释放。
-/// - 地址转换：假设恒等映射。
-pub struct HalImpl;
+pub struct RiscvHal;
 
-unsafe impl Hal for HalImpl {
-    fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
-        // SAFETY: `FrameAllocOptions` 已保证返回的段物理连续且页对齐。
-        let pages = pages.max(1);
+/* -------------------------------------------------------------
+ *  helper：检查地址是否落在内核线性映射并保持物理连续（一页内）
+ * -----------------------------------------------------------*/
+fn fast_path_candidate(v: usize, len: usize) -> Option<PhysAddr> {
+    if !(LINEAR_MAPPING_BASE_VADDR..).contains(&v) {
+        return None;
+    }
+    let offset = v & (PAGE_SIZE - 1);
+    if offset + len > PAGE_SIZE {
+        return None; // 跨页则可能不连续
+    }
+    Some(v - LINEAR_MAPPING_BASE_VADDR)
+}
 
-        // 1) 申请物理页段。
-        let seg = FrameAllocOptions::new()
+unsafe impl Hal for RiscvHal {
+    /* ============== 1. 长期固定 DMA 区 ============== */
+    fn dma_alloc(pages: usize, _dir: BufferDirection) -> (PhysAddr, NonNull<u8>) {
+        let segment: Segment<()> = FrameAllocOptions::new()
             .alloc_segment(pages)
-            .expect("DMA frame alloc failed");
+            .expect("DMA OOM");
+        let paddr = segment.start_paddr();
+        let vaddr = paddr_to_vaddr(paddr);
+        // 让 Segment 在 HAL 内部就被忘掉：VirtIO 驱动负责在 `dma_dealloc`
+        // 时归还，我们只需把它丢进 Box 以便 drop。
+        MAP.lock().insert(
+            paddr,
+            Mapping::Bounce /*借用此 enum 因为也要在 dealloc 时释放*/{
+                stream: {
+                    // 借助 DmaStream 完成 cache 属性转换；方向无关紧要
+                    let us = segment.into();
+                    DmaStream::map(us, DmaDirection::Bidirectional, false).unwrap()
+                },
+                orig_ptr: core::ptr::null_mut(),
+                len: pages * PAGE_SIZE,
+                dir: BufferDirection::Both,
+            },
+        );
+        (paddr, NonNull::new(vaddr as *mut u8).unwrap())
+    }
 
-        // 2) 创建 streaming DMA 映射，记录方向。
-        let direction = match _direction {
+    unsafe fn dma_dealloc(paddr: PhysAddr, _vaddr: NonNull<u8>, _pages: usize) -> i32 {
+        MAP.lock().remove(&paddr); // drop 即释放
+        0
+    }
+
+    /* ============== 2. MMIO ============== */
+    unsafe fn mmio_phys_to_virt(paddr: PhysAddr, _size: usize) -> NonNull<u8> {
+        // 0x8_0000_0000.. 的 I/O 区已在线性映射中标为 Uncacheable
+        NonNull::new(paddr_to_vaddr(paddr) as *mut u8).unwrap()
+    }
+
+    /* ============== 3. share / unshare ============== */
+    unsafe fn share(buf: NonNull<[u8]>, dir: BufferDirection) -> PhysAddr {
+        let vaddr = buf.as_ptr().addr();
+        let len = buf.len();
+
+        // Fast‑path：页面内 + 内核线性映射
+        if let Some(paddr) = fast_path_candidate(vaddr, len) {
+            MAP.lock().insert(paddr, Mapping::Direct);
+            return paddr;
+        }
+
+        /* ---------- 走 bounce‑buffer ---------- */
+        let pages = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+        let segment = FrameAllocOptions::new()
+            .alloc_segment(pages)
+            .expect("bounce OOM");
+        let us = segment.into();
+        let dma_dir = match dir {
             BufferDirection::DriverToDevice => DmaDirection::ToDevice,
             BufferDirection::DeviceToDriver => DmaDirection::FromDevice,
             BufferDirection::Both => DmaDirection::Bidirectional,
         };
+        let stream = DmaStream::map(us, dma_dir, false).unwrap();
+        let paddr = stream.paddr();
 
-        // RISC-V virt 平台暂不支持硬件缓存一致性 => is_cache_coherent = false
-        let dma = DmaStream::map(seg.into(), direction, /*is_cache_coherent=*/ false)
-            .expect("DmaStream map failed");
-
-        let paddr = dma.paddr() as PhysAddr;
-        let vaddr = paddr_to_vaddr(paddr as usize) as *mut u8;
-
-        // 3) 将映射存入全局表，供后续 `dma_dealloc` 释放。
-        DMA_ALLOCS.call_once(|| GuardSpinLock::new(BTreeMap::new()));
-        DMA_ALLOCS
-            .get()
-            .unwrap()
-            .lock()
-            .insert(paddr, dma);
-
-        (paddr, NonNull::new(vaddr).unwrap())
-    }
-
-    unsafe fn dma_dealloc(paddr: PhysAddr, _vaddr: NonNull<u8>, _pages: usize) -> i32 {
-        // 从全局表移除，对象 Drop 时自动撤销 DMA 映射并归还物理页。
-        if let Some(_stream) = DMA_ALLOCS
-            .get()
-            .expect("DMA_ALLOCS not initialized")
-            .lock()
-            .remove(&paddr)
-        {
-            0 // success
-        } else {
-            // [TODO]: 打印警告或记录调试信息
-            -1 // not found
+        // 如需写入设备，先拷贝原数据
+        if matches!(dir, BufferDirection::DriverToDevice | BufferDirection::Both) {
+            ptr::copy_nonoverlapping(vaddr as *const u8, paddr_to_vaddr(paddr) as *mut u8, len);
         }
+
+        MAP.lock().insert(
+            paddr,
+            Mapping::Bounce {
+                stream,
+                orig_ptr: vaddr as *mut u8,
+                len,
+                dir,
+            },
+        );
+
+        paddr
     }
 
-    unsafe fn mmio_phys_to_virt(paddr: PhysAddr, _size: usize) -> NonNull<u8> {
-        NonNull::new(paddr_to_vaddr(paddr as usize) as *mut u8).unwrap()
-    }
-
-    unsafe fn share(buffer: NonNull<[u8]>, _direction: BufferDirection) -> PhysAddr {
-        buffer.as_ptr() as *mut u8 as usize        
-    }
-
-    unsafe fn unshare(_paddr: PhysAddr, _buffer: NonNull<[u8]>, _direction: BufferDirection) {
-        // Nothing to do, as the host already has access to all memory and we didn't copy the buffer
-        // anywhere else.
+    unsafe fn unshare(paddr: PhysAddr, _buffer: NonNull<[u8]>, _dir: BufferDirection) {
+        if let Some(entry) = MAP.lock().remove(&paddr) {
+            if let Mapping::Bounce {
+                stream,
+                orig_ptr,
+                len,
+                dir,
+            } = entry
+            {
+                // 设备→CPU 方向需要回拷
+                if matches!(dir, BufferDirection::DeviceToDriver | BufferDirection::Both) {
+                    ptr::copy_nonoverlapping(
+                        paddr_to_vaddr(stream.paddr()) as *const u8,
+                        orig_ptr,
+                        len,
+                    );
+                }
+                drop(stream); // 自动撤 cache 属性并释放 frames
+            }
+        }
     }
 }

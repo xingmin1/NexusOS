@@ -13,6 +13,7 @@ use crate::{
     Pod,
 };
 
+#[allow(dead_code)]
 pub(crate) const NR_ENTRIES_PER_PAGE: usize = 512;
 
 #[derive(Clone, Debug, Default)]
@@ -174,7 +175,7 @@ impl PageTableEntryTrait for PageTableEntry {
     }
 
     fn set_prop(&mut self, prop: PageProperty) {
-        let mut flags = PageTableFlags::VALID.bits()
+        let flags = PageTableFlags::VALID.bits()
             | parse_flags!(prop.flags.bits(), PageFlags::R, PageTableFlags::READABLE)
             | parse_flags!(prop.flags.bits(), PageFlags::W, PageTableFlags::WRITABLE)
             | parse_flags!(prop.flags.bits(), PageFlags::X, PageTableFlags::EXECUTABLE)
@@ -195,7 +196,8 @@ impl PageTableEntryTrait for PageTableEntry {
             CachePolicy::Writeback => (),
             CachePolicy::Uncacheable => {
                 // Currently, Asterinas uses `Uncacheable` for I/O memory.
-                flags |= PageTableFlags::PBMT_IO.bits()
+                // 如果处理器/仿真器没有 Svpbmt 扩展，硬件在页表遍历时发现非法 PBMT 位就会抛 LoadPageFault
+                // flags |= PageTableFlags::PBMT_IO.bits()
             }
             _ => panic!("unsupported cache policy"),
         }

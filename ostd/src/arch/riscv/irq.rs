@@ -2,6 +2,7 @@
 
 //! Interrupts.
 use alloc::{boxed::Box, fmt::Debug, sync::Arc, vec::Vec};
+use core::sync::atomic::{AtomicPtr, Ordering};
 
 use crossbeam_queue::ArrayQueue;
 use id_alloc::IdAlloc;
@@ -16,6 +17,47 @@ use crate::{
 
 /// The global allocator for software defined IRQ lines.
 pub(crate) static IRQ_ALLOCATOR: Once<GuardSpinLock<IdAlloc>> = Once::new();
+
+pub type IrqNum = u16;
+pub const SOFTWARE_IRQ_BASE: IrqNum = 1024;
+pub const SOFTWARE_IRQ_CAP: usize = 256;
+const MAX_IRQS: usize = SOFTWARE_IRQ_BASE as usize + SOFTWARE_IRQ_CAP;
+
+#[link_section = ".bss.cpu_local"]
+static IRQ_TABLE: [AtomicPtr<IrqLine>; MAX_IRQS] = {
+    const Z: AtomicPtr<IrqLine> = AtomicPtr::new(core::ptr::null_mut());
+    [Z; MAX_IRQS]
+};
+
+#[inline]
+pub(crate) unsafe fn register_line(n: u8, p: *const IrqLine) {
+    IRQ_TABLE[n as usize].store(p as *mut IrqLine, Ordering::Release);
+}
+
+#[inline]
+pub(crate) unsafe fn unregister_line(n: u8) {
+    IRQ_TABLE[n as usize].store(core::ptr::null_mut(), Ordering::Release);
+}
+
+#[inline]
+pub(crate) fn is_slot_empty(n: u8) -> bool {
+    IRQ_TABLE[n as usize].load(Ordering::Acquire).is_null()
+}
+
+pub(crate) fn is_plic_source(id: u8) -> bool {
+    id != 0 && (id as usize) < SOFTWARE_IRQ_BASE as usize
+}
+
+static SOFT_ALLOC: Once<GuardSpinLock<IdAlloc>> = Once::new();
+
+pub(crate) fn alloc_soft_irq() -> Option<u8> {
+    SOFT_ALLOC
+        .get()
+        .unwrap()
+        .lock()
+        .alloc()
+        .map(|i| SOFTWARE_IRQ_BASE as u8 + i as u8)
+}
 
 pub(crate) static IRQ_LIST: Once<Vec<IrqLine>> = Once::new();
 
@@ -35,6 +77,7 @@ pub(crate) fn init() {
     CALLBACK_ID_ALLOCATOR
         .call_once(|| Mutex::new_with_raw_mutex(IdAlloc::with_capacity(256), Spinlock::new()));
     IRQ_ALLOCATOR.call_once(|| GuardSpinLock::new(IdAlloc::with_capacity(256)));
+    SOFT_ALLOC.call_once(|| GuardSpinLock::new(IdAlloc::with_capacity(SOFTWARE_IRQ_CAP)));
     for cpu_id in crate::cpu::all_cpus() {
         CPU_IPI_QUEUES
             .get_on_cpu(cpu_id)

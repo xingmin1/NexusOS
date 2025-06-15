@@ -52,9 +52,14 @@ impl IrqLine {
     fn new(irq_num: u8) -> Self {
         // SAFETY: The IRQ number is allocated through `RecycleAllocator`, and it is guaranteed that the
         // IRQ is not one of the important IRQ like cpu exception IRQ.
+        let inner_irq = unsafe { irq::IrqLine::acquire(irq_num) };
+        // 将架构层 IrqLine 指针注册到全局 IRQ_TABLE，供 Trap 快路径使用
+        unsafe {
+            irq::register_line(irq_num, inner_irq.as_ref() as *const _);
+        }
         Self {
             irq_num,
-            inner_irq: unsafe { irq::IrqLine::acquire(irq_num) },
+            inner_irq,
             callbacks: Vec::new(),
         }
     }

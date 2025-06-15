@@ -41,13 +41,8 @@ pub(crate) fn init_on_bsp() {
     }
 
     irq::init();
-    // 初始化全局 PLIC，并为 BSP 设置阈值与屏蔽
-    if let Some((base, nirq, nctx)) = crate::arch::riscv::plic::probe_from_fdt() {
-        unsafe {
-            crate::arch::riscv::plic::init_global(base, nirq, nctx);
-            crate::arch::riscv::plic::per_hart_init(bsp_hart_id as usize);
-        }
-    }
+    // 为 BSP 初始化其本地 PLIC context
+    unsafe { crate::arch::riscv::plic::per_hart_init(bsp_hart_id as usize); }
     crate::sync::init();
 
     // 在timer::init之前，irq::init之后 初始化SMP子系统
@@ -80,9 +75,7 @@ pub(crate) unsafe fn init_on_ap(hart_id: u32) {
     irq::enable_all_local();
 
     // 为 AP 初始化其本地 PLIC context
-    if let Some((_base, _nirq, _nctx)) = crate::arch::riscv::plic::probe_from_fdt() {
-        crate::arch::riscv::plic::per_hart_init(hart_id as usize);
-    }
+    crate::arch::riscv::plic::per_hart_init(hart_id as usize);
 
     log::trace!("Hart {} finished arch-specific AP initialization.", hart_id);
 }

@@ -188,16 +188,16 @@ pub(crate) fn handle_interrupt(interrupt: Interrupt, f: &mut TrapFrame) {
             use crate::arch::riscv::plic;
             log::trace!("Supervisor External Interrupt");
 
+            use crate::arch::riscv::plic;
+            let hart = riscv::register::mhartid::read();
+
             loop {
-                let irq_id = plic::claim();
+                let irq_id = plic::handle().claim(hart as usize);
                 if irq_id == 0 {
                     break;
                 }
-
                 crate::trap::call_irq_callback_functions(f, irq_id as usize);
-
-                // 完成中断
-                plic::complete(irq_id);
+                plic::handle().complete(hart as usize, irq_id);
             }
         }
     }

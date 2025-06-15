@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use core::fmt::Debug;
+use smallvec::SmallVec;
 
 use crate::{
     arch::irq::{self, IrqCallbackHandle, IRQ_ALLOCATOR},
@@ -26,7 +27,7 @@ pub struct IrqLine {
     irq_num: u8,
     #[expect(clippy::redundant_allocation)]
     inner_irq: Arc<&'static irq::IrqLine>,
-    callbacks: Vec<IrqCallbackHandle>,
+    callbacks: SmallVec<[IrqCallbackHandle; 4]>,
 }
 
 impl IrqLine {
@@ -60,7 +61,7 @@ impl IrqLine {
         Self {
             irq_num,
             inner_irq,
-            callbacks: Vec::new(),
+            callbacks: SmallVec::new(),
         }
     }
 
@@ -94,7 +95,7 @@ impl Clone for IrqLine {
         Self {
             irq_num: self.irq_num,
             inner_irq: self.inner_irq.clone(),
-            callbacks: Vec::new(),
+            callbacks: SmallVec::new(),
         }
     }
 }

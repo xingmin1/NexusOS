@@ -3,7 +3,6 @@
 //! Interrupts.
 use alloc::{boxed::Box, fmt::Debug, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicPtr, Ordering};
-use crate::trap::irq::IrqNum;
 
 use crossbeam_queue::ArrayQueue;
 use id_alloc::IdAlloc;
@@ -57,7 +56,7 @@ pub(crate) fn alloc_soft_irq() -> Option<IrqNum> {
         .unwrap()
         .lock()
         .alloc()
-        .map(|i| SOFTWARE_IRQ_BASE as u8 + i as u8)
+        .map(|i| SOFTWARE_IRQ_BASE as u16 + i as u16)
 }
 
 pub(crate) static IRQ_LIST: Once<Vec<IrqLine>> = Once::new();
@@ -70,7 +69,7 @@ pub(crate) fn init() {
     let mut list: Vec<IrqLine> = Vec::new();
     for i in 0..256 {
         list.push(IrqLine {
-            irq_num: i as u8,
+            irq_num: i as u16,
             callback_list: GuardSpinLock::new(Vec::new()),
         });
     }
@@ -183,7 +182,7 @@ impl IrqLine {
     }
 
     /// Get the IRQ number.
-    pub fn num(&self) -> u8 {
+    pub fn num(&self) -> u16 {
         self.irq_num
     }
 

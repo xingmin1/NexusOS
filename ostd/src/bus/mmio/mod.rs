@@ -142,7 +142,7 @@ fn iter_fdt_nodes() {
                         }
 
                         // 分配 IRQ line 对应 handle
-                        let handle = match IrqLine::alloc_specific(irq_id as u8) {
+                        let handle = match IrqLine::alloc_specific(irq_id as u16) {
                             Ok(h) => h,
                             Err(_) => {
                                 log::warn!("[Virtio]: IRQ {} already allocated", irq_id);

@@ -23,7 +23,6 @@ pub type IrqCallbackFunction = dyn Fn(&TrapFrame) + Sync + Send + 'static;
 ///
 /// [`alloc`]: Self::alloc
 /// [`alloc_specific`]: Self::alloc_specific
-#[derive(Debug)]
 pub type IrqNum = u16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,7 +31,9 @@ enum SourceKind {
     Software,
 }
 
+/// 中断线
 #[must_use]
+#[derive(Debug)]
 pub struct IrqLine {
     irq_num: IrqNum,
     kind: SourceKind,
@@ -44,10 +45,10 @@ pub struct IrqLine {
 impl IrqLine {
     /// Allocates a specific *external* IRQ line.
     pub fn alloc_specific(irq: IrqNum) -> Result<Self> {
-        if unsafe { irq::is_slot_empty(irq) } {
+        if irq::is_slot_empty(irq) {
             Ok(Self::new(irq, SourceKind::External))
         } else {
-            Err(Error::AlreadyAllocated)
+            Err(Error::NotEnoughResources)
         }
     }
 
@@ -58,25 +59,25 @@ impl IrqLine {
             .ok_or(Error::NotEnoughResources)
     }
 
-    /// Allocates an available IRQ line.
-    pub fn alloc() -> Result<Self> {
-        let Some(irq_num) = IRQ_ALLOCATOR.get().unwrap().lock().alloc() else {
-            return Err(Error::NotEnoughResources);
-        };
-        Ok(Self::new(irq_num as IrqNum, SourceKind::External))
-    }
+    // /// Allocates an available IRQ line.
+    // pub fn alloc() -> Result<Self> {
+    //     let Some(irq_num) = IRQ_ALLOCATOR.get().unwrap().lock().alloc() else {
+    //         return Err(Error::NotEnoughResources);
+    //     };
+    //     Ok(Self::new(irq_num as IrqNum, SourceKind::External))
+    // }
 
     fn new(irq_num: IrqNum, kind: SourceKind) -> Self {
         // SAFETY: IRQ 号由上层逻辑保证合法
         let inner_irq = unsafe { irq::IrqLine::acquire(irq_num) };
         // 注册到全局快查表
-        unsafe { irq::register_line(irq_num, inner_irq.as_ref() as *const _) };
+        unsafe { irq::register_line(irq_num, *inner_irq.as_ref() as *const _) };
 
         // 若为外部中断且来自 PLIC，则自动启用
         #[cfg(target_arch = "riscv64")]
         if kind == SourceKind::External && irq::is_plic_source(irq_num) {
-            plic::set_priority(irq_num as usize, 1);
-            plic::enable(irq_num as usize);
+            // plic::set_priority(irq_num as usize, 1);
+            plic::enable(irq_num as u32);
         }
 
         Self {
@@ -136,7 +137,7 @@ impl Drop for IrqLine {
         // 若是外部中断且来自 PLIC，则关闭
         #[cfg(target_arch = "riscv64")]
         if self.kind == SourceKind::External && irq::is_plic_source(self.irq_num) {
-            plic::disable(self.irq_num as usize);
+            // plic::disable(self.irq_num as usize);
         }
     }
 }

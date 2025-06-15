@@ -42,14 +42,19 @@ pub struct IrqLine {
 }
 
 impl IrqLine {
-    /// Allocates a specific IRQ line.
-    pub fn alloc_specific(irq: u8) -> Result<Self> {
-        IRQ_ALLOCATOR
-            .get()
-            .unwrap()
-            .lock()
-            .alloc_specific(irq as usize)
-            .map(|irq_num| Self::new(irq_num as u8))
+    /// Allocates a specific *external* IRQ line.
+    pub fn alloc_specific(irq: IrqNum) -> Result<Self> {
+        if unsafe { irq::is_slot_empty(irq) } {
+            Ok(Self::new(irq, SourceKind::External))
+        } else {
+            Err(Error::AlreadyAllocated)
+        }
+    }
+
+    /// Allocates the next available *software* IRQ (IPI).
+    pub fn alloc_software() -> Result<Self> {
+        irq::alloc_soft_irq()
+            .map(|n| Self::new(n, SourceKind::Software))
             .ok_or(Error::NotEnoughResources)
     }
 

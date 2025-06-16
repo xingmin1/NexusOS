@@ -16,6 +16,7 @@ members = [
     "ostd/libs/maitake/libs/bitfield",
     "ostd/libs/maitake-sync",
     "ostd/libs/maitake",
+    "ostd/libs/virtio-drivers",
     "kernel/libs/aster-rights",
     "kernel/libs/aster-rights-proc",
     "kernel/libs/typeflags",
@@ -23,6 +24,7 @@ members = [
     "kernel/libs/block-dev",
     "kernel/comps/vfs",
     "kernel/drivers/virtio-blk",
+    "kernel/comps/ext4_fs",
 ]
 exclude = [
     "osdk",

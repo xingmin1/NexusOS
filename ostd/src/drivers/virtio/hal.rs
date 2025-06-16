@@ -10,10 +10,7 @@ use spin::Mutex;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr, PAGE_SIZE};
 
 use crate::mm::{
-    dma::{DmaDirection, DmaStream},
-    frame::{allocator::FrameAllocOptions, Segment},
-    kspace::{paddr_to_vaddr, LINEAR_MAPPING_BASE_VADDR},
-    HasPaddr,
+    dma::{DmaDirection, DmaStream}, frame::{allocator::FrameAllocOptions, Segment}, kspace::paddr_to_vaddr, vaddr_to_paddr, HasPaddr, Vaddr
 };
 
 /// 内部状态：把 paddr 映射到“要不要做 bounce 以及附带数据”。
@@ -41,15 +38,19 @@ pub struct RiscvHal;
 /* -------------------------------------------------------------
  *  helper：检查地址是否落在内核线性映射并保持物理连续（一页内）
  * -----------------------------------------------------------*/
-fn fast_path_candidate(v: usize, len: usize) -> Option<PhysAddr> {
-    if !(LINEAR_MAPPING_BASE_VADDR..).contains(&v) {
-        return None;
-    }
+fn fast_path_candidate(v: Vaddr, len: usize) -> Option<PhysAddr> {
+    // 只接收“页内不跨页”的地址
     let offset = v & (PAGE_SIZE - 1);
     if offset + len > PAGE_SIZE {
-        return None; // 跨页则可能不连续
+        return None;
     }
-    Some(v - LINEAR_MAPPING_BASE_VADDR)
+
+    // 至少满足 16-byte 对齐（Virtq 描述符/环表都按 16 对齐）
+    if (v & 0xF) != 0 {
+        return None;
+    }
+
+    vaddr_to_paddr(v)
 }
 
 unsafe impl Hal for RiscvHal {

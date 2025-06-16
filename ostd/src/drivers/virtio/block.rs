@@ -37,10 +37,6 @@ impl MmioDriver for VirtioBlkDriver {
             Ok(id) => id,
             Err(_) => return Err((BusProbeError::ConfigurationSpaceError, common)),
         };
-        // 2 == block device per VirtIO spec
-        if device_id != 2 {
-            return Err((BusProbeError::DeviceNotMatch, common));
-        }
 
         // Clone IoMem & Irq to move into our own struct.
         let io_mem: IoMem = common.io_mem().clone();

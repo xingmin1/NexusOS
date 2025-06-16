@@ -66,8 +66,13 @@ impl MmioDriver for VirtioBlkDriver {
         let mut block_device_table = BLOCK_DEVICE_TABLE.lock();
         let mut device_name = [0; 20];
         let len = blk.device_id(&mut device_name).unwrap();
-        let device_name = String::from_utf8_lossy(&device_name[..len]).to_string();
+        let device_name = if len > 0 {
+            String::from_utf8_lossy(&device_name[..len]).to_string()
+        } else {
+            "block_device".to_string()
+        };
         let blk = Arc::new(Mutex::new(blk));
+        // [TODO]: 如果有多个设备，且都没有名称，会覆盖
         block_device_table.insert(device_name, blk.clone());
 
         // 使用 spin::Mutex 包装，便于中断回调访问

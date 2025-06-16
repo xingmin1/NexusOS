@@ -218,6 +218,18 @@ impl VmSpace {
         // SAFETY: The memory range is in user space, as checked above.
         Ok(unsafe { VmWriter::<Fallible>::from_user_space(vaddr as *mut u8, len) })
     }
+
+    /// 基于自身的页表转换 VA→PA（不要求当前已激活）。
+    pub fn vaddr_to_paddr(&self, va: Vaddr) -> Option<Paddr> {
+        use crate::{
+            arch::mm::{PageTableEntry, PagingConsts},
+            mm::page_table::page_walk,
+        };
+
+        // SAFETY: self.pt.root_paddr() 永远指向有效的根页表
+        unsafe { page_walk::<PageTableEntry, PagingConsts>(self.pt.root_paddr(), va) }
+            .map(|(pa, _)| pa)
+    }
 }
 
 impl Default for VmSpace {
@@ -457,7 +469,7 @@ cpu_local_cell! {
     // TODO: If we are enabling ASID, we need to maintain the TLB state of each
     // CPU, rather than merely the activated `VmSpace`. When ASID is enabled,
     // the non-active `VmSpace`s can still have their TLB entries in the CPU!
-    static ACTIVATED_VM_SPACE: *const VmSpace = core::ptr::null();
+    pub(crate) static ACTIVATED_VM_SPACE: *const VmSpace = core::ptr::null();
 }
 
 /// The result of a query over the VM space.

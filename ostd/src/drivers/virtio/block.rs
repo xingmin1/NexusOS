@@ -131,8 +131,26 @@ mod test {
         let _span = tracing::info_span!("list_block_device");
         let block_device_table = BLOCK_DEVICE_TABLE.lock();
         tracing::info!("block_device count: {}", block_device_table.len());
-        block_device_table.iter().for_each(|(name, _)| {
+        block_device_table.iter().for_each(|(name, blk)| {
             tracing::info!("{}", name);
+            
+            // 测试读写
+            let mut blk = blk.lock();
+            let mut raw_buf = [0; 512];
+            blk.read_blocks(0, &mut raw_buf).unwrap();
+            tracing::info!("read: {:?}", raw_buf);
+
+            let write_buf = [1; 512];
+            blk.write_blocks(0, &write_buf).unwrap();
+            tracing::info!("write: {:?}", write_buf);
+            blk.flush().unwrap();
+            let mut read_buf = [0; 512];
+            blk.read_blocks(0, &mut read_buf).unwrap();
+            assert_eq!(read_buf, write_buf);
+            
+            // 还原
+            blk.write_blocks(0, &raw_buf).unwrap();
+            blk.flush().unwrap();
         });
     }
 }

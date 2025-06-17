@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 extern crate alloc;
 
+use core::fmt;
+
+use error_stack::Context;
+
 use crate::prelude::*;
 
 /// Ext4Error number.
@@ -74,6 +78,18 @@ impl Debug for Ext4Error {
         }
     }
 }
+
+impl fmt::Display for Ext4Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(message) = &self.message {
+            write!(f, "Ext4Error {{ code: {:?}, message: {:?} }}", self.code, message)
+        } else {
+            write!(f, "Ext4Error {{ code: {:?} }}", self.code)
+        }
+    }
+}
+
+impl Context for Ext4Error {}
 
 impl Ext4Error {
     pub const fn new(code: ErrCode) -> Self {

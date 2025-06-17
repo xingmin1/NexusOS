@@ -99,6 +99,7 @@ version = "0.1.0"
 dependencies = [
  "axsync",
  "bitflags 2.9.0",
+ "error-stack",
  "log",
  "ostd",
  "vfs",

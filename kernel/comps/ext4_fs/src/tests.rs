@@ -1,5 +1,6 @@
 // mod mem_blk;
 
+use nexus_error::Errno;
 use ostd::task::scheduler::blocking_future::BlockingFuture;
 
 fn block_on<F: core::future::Future>(f: F) -> F::Output {
@@ -17,6 +18,7 @@ fn block_on<F: core::future::Future>(f: F) -> F::Output {
 extern crate alloc;
 
 use alloc::{format, sync::Arc, vec::Vec};
+use vfs::verror::KernelError;
 use core::sync::atomic::{AtomicBool, Ordering};
 use nexus_error::error_stack::ResultExt;
 use ostd::prelude::ktest;
@@ -53,7 +55,7 @@ async fn test_basic() -> VfsResult<()> {
     let fnode_handle = vfs_manager
         .open(
             "/hello.txt".as_ref(),
-            FileOpen::new(2 | OpenStatus::CREATE.bits()),
+            FileOpen::new(2 | OpenStatus::CREATE.bits()).change_context_lazy(|| KernelError::new(Errno::EINVAL))?,
             FileMode::OWNER_RWE,
         )
         .await

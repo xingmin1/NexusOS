@@ -9,8 +9,7 @@
 //! 以便在错误链中提供更多上下文信息。
 
 use nexus_error::error_stack::Result as ErrorStackResult;
-pub use nexus_error::Errno;
-pub use nexus_error::error_stack::*;
+pub(crate) use nexus_error::Errno;
 
 pub type VfsResult<T> = ErrorStackResult<T, KernelError>;
 pub type KernelError = nexus_error::Error;
@@ -19,9 +18,9 @@ pub type KernelError = nexus_error::Error;
 #[macro_export]
 macro_rules! vfs_err_unsupported {
     ($operation:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENOSYS,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENOSYS,
                 $operation
             )
         )
@@ -32,13 +31,13 @@ macro_rules! vfs_err_unsupported {
 #[macro_export]
 macro_rules! vfs_err_invalid_argument {
     ($operation:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::new($crate::verror::Errno::EINVAL)
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::new(nexus_error::Errno::EINVAL)
         ).attach_printable($operation)
     };
     ($operation:expr, $reason:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::new($crate::verror::Errno::EINVAL)
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::new(nexus_error::Errno::EINVAL)
         ).attach_printable(alloc::format!("{}: {}", $operation, $reason))
     };
 }
@@ -47,9 +46,9 @@ macro_rules! vfs_err_invalid_argument {
 #[macro_export]
 macro_rules! vfs_err_not_found {
     ($desc:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENOENT,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENOENT,
                 "Resource not found"
             )
         ).attach_printable(alloc::format!("{}", $desc))
@@ -65,9 +64,9 @@ macro_rules! vfs_err_io_error {
     ($context:expr) => {
         {
             use alloc::string::ToString;
-            $crate::verror::Report::new(
-                $crate::verror::KernelError::with_message(
-                    $crate::verror::Errno::EIO,
+            nexus_error::error_stack::Report::new(
+                nexus_error::Error::with_message(
+                    nexus_error::Errno::EIO,
                     "I/O Error"
                 )
             ).attach_printable(alloc::format!("{}", $context))
@@ -82,9 +81,9 @@ macro_rules! vfs_err_io_error {
 #[macro_export]
 macro_rules! vfs_err_not_dir {
     ($path:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENOTDIR,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENOTDIR,
                 "Not a directory"
             )
         ).attach_printable(alloc::format!("{}", $path))
@@ -98,9 +97,9 @@ macro_rules! vfs_err_not_dir {
 #[macro_export]
 macro_rules! vfs_err_not_implemented {
     ($desc:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENOSYS,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENOSYS,
                 "Operation not implemented"
             )
         ).attach_printable(alloc::format!("{}", $desc))
@@ -114,9 +113,9 @@ macro_rules! vfs_err_not_implemented {
 #[macro_export]
 macro_rules! vfs_err_is_dir {
     ($path:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::EISDIR,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::EISDIR,
                 "Is a directory"
             )
         ).attach_printable(alloc::format!("{}", $path))
@@ -130,9 +129,9 @@ macro_rules! vfs_err_is_dir {
 #[macro_export]
 macro_rules! vfs_err_already_exists {
     ($path:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::EEXIST,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::EEXIST,
                 "Already exists"
             )
         ).attach_printable(alloc::format!("{}", $path))
@@ -146,9 +145,9 @@ macro_rules! vfs_err_already_exists {
 #[macro_export]
 macro_rules! vfs_err_not_empty {
     ($path:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENOTEMPTY,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENOTEMPTY,
                 "Directory not empty"
             )
         ).attach_printable(alloc::format!("{}", $path))
@@ -162,9 +161,9 @@ macro_rules! vfs_err_not_empty {
 #[macro_export]
 macro_rules! vfs_err_name_too_long {
     ($name:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENAMETOOLONG,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENAMETOOLONG,
                 "Name too long"
             )
         ).attach_printable(alloc::format!("{}", $name))
@@ -178,9 +177,9 @@ macro_rules! vfs_err_name_too_long {
 #[macro_export]
 macro_rules! vfs_err_no_space {
     ($device:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::ENOSPC,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::ENOSPC,
                 "No space left on device"
             )
         ).attach_printable(alloc::format!("{}", $device))
@@ -194,9 +193,9 @@ macro_rules! vfs_err_no_space {
 #[macro_export]
 macro_rules! vfs_err_permission_denied {
     ($op:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::EPERM,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::EPERM,
                 "Permission denied"
             )
         ).attach_printable(alloc::format!("{}", $op))
@@ -210,9 +209,9 @@ macro_rules! vfs_err_permission_denied {
 #[macro_export]
 macro_rules! vfs_err_invalid_path {
     ($path:expr) => {
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::EINVAL,
+        nexus_error::error_stack::Report::new(
+            nexus_error::Error::with_message(
+                nexus_error::Errno::EINVAL,
                 "Invalid path"
             )
         ).attach_printable(alloc::format!("{}", $path))

@@ -5,10 +5,11 @@
 
 #![allow(clippy::needless_lifetimes)]
 
-use alloc::{sync::Arc, vec::Vec, boxed::Box};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 
 use another_ext4::{Ext4Error, FileAttr, FileType, InodeMode, InodeMode as E4Mode};
 use async_trait::async_trait;
+use nexus_error::{error_stack::{Report, ResultExt}, Errno};
 use ostd::sync::Mutex;
 use vfs::{types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges}, verror::KernelError, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry, FileOpen, VfsPath, VfsPathBuf, VfsResult, VnodeMetadata, VnodeType};
 
@@ -31,7 +32,7 @@ fn convert_ftype(ft: FileType) -> VnodeType {
 }
 
 /// 将 `another_ext4::Ext4Error` 转为 VFS 错误报告。
-fn map_err(e: Ext4Error) -> vfs::verror::Report<KernelError> {
+fn map_err(e: Ext4Error) -> Report<KernelError> {
     vfs_err_io_error!("ext4 error {:?}", e.code())
 }
 
@@ -245,33 +246,34 @@ impl AsyncVnode for Ext4Vnode {
         if self.kind != VnodeType::Directory {
             return Err(vfs_err_invalid_argument!("open_dir_handle on non-dir"));
         }
-        todo!("use flags: {:?}", flags);
+
         // 预取目录条目
-        // let list = self
-        //     .as_fs()
-        //     .inner
-        //     .lock()
-        //     .await
-        //     .listdir(self.inode)
-        //     .map_err(map_err)?;
-        // let mut entries = Vec::new();
-        // for e in list {
-        //     let name = String::from(e.name());
-        //     let ino = e.inode();
-        //     if let Ok(attr) = self.as_fs().inner.lock().await.getattr(ino) {
-        //         entries.push(DirectoryEntry {
-        //             name,
-        //             vnode_id: ino as u64,
-        //             kind: convert_ftype(attr.ftype),
-        //         });
-        //     }
-        // }
-        // Ok(Arc::new(Ext4DirHandle {
-        //     vnode: self,
-        //     flags,
-        //     idx: Mutex::new(0),
-        //     entries,
-        // }))
+        let list = self
+            .as_fs()
+            .inner
+            .lock()
+            .await
+            .listdir(self.inode)
+            .change_context_lazy(|| KernelError::new(Errno::EIO))
+            .attach_printable("listdir")?;
+        let mut entries = Vec::new();
+        for e in list {
+            let name = String::from(e.name());
+            let ino = e.inode();
+            if let Ok(attr) = self.as_fs().inner.lock().await.getattr(ino) {
+                entries.push(DirectoryEntry {
+                    name,
+                    vnode_id: ino as u64,
+                    kind: convert_ftype(attr.ftype),
+                });
+            }
+        }
+        Ok(Arc::new(Ext4DirHandle {
+            vnode: self,
+            flags,
+            idx: Mutex::new(0),
+            entries,
+        }))
     }
 
     async fn readlink(self: Arc<Self>) -> VfsResult<VfsPathBuf> {

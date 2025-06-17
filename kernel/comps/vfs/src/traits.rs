@@ -56,7 +56,7 @@ pub trait AsyncFileSystem: Send + Sync + 'static {
     fn is_readonly(&self) -> bool;
 
     /// 返回文件系统的根Vnode。
-    async fn root_vnode(&self) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>>;
+    async fn root_vnode(self: Arc<Self>) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>>;
 
     /// 获取文件系统的统计信息。
     async fn statfs(&self) -> VfsResult<FilesystemStats>;

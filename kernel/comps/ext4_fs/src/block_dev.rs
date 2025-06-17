@@ -47,45 +47,30 @@ where
 
 /* ---------- 实现 another_ext4::BlockDevice ---------- */
 
-impl<H, T> BlockDevice for VirtioBlockDevice<H, T>
-where
-    H: virtio_drivers::Hal + Send + Sync + 'static,
-    T: virtio_drivers::transport::Transport + Send + Sync + 'static,
-{
-    fn read_block(&self, block_id: u64) -> Block {
-        let mut buf = [0u8; SECTOR_SIZE];
-        self.inner
-            .lock()
-            .block()
-            .read_blocks(block_id, &mut buf)
-            .unwrap();
-        Block::new(block_id, &buf)
-    }
+// impl<H, T> BlockDevice for VirtioBlockDevice<H, T>
+// where
+//     H: virtio_drivers::Hal + Send + Sync + 'static,
+//     T: virtio_drivers::transport::Transport + Send + Sync + 'static,
+// {
+//     fn read_block(&self, block_id: u64) -> Block {
+//         let mut buf = [0u8; SECTOR_SIZE];
+//         self.inner
+//             .lock()
+//             .block()
+//             .read_blocks(block_id, &mut buf)
+//             .unwrap();
+//         Block::new(block_id, &buf)
+//     }
 
-    fn write_block(&self, block: &Block) {
-        self.inner
-            .lock()
-            .block()
-            .write_blocks(block.id, &block.data)
-            .unwrap();
-    }
-}
+//     fn write_block(&self, block: &Block) {
+//         self.inner
+//             .lock()
+//             .block()
+//             .write_blocks(block.id, &block.data)
+//             .unwrap();
+//     }
+// }
 
-impl<D> BlockDevice for D
-where
-    D: AsyncBlockDevice + Send + Sync + 'static,
-{
-    fn read_block(&self, block_id: u64) -> Block {
-        let mut block = Block::default();
-        self.read_blocks(block_id, &mut block.data).unwrap();
-        block.id = block_id;
-        block
-    }
-
-    fn write_block(&self, block: &Block) {
-        self.write_blocks(block.id, &block.data).unwrap();
-    }
-}
 
 /* ---------- 实现 VFS::AsyncBlockDevice ---------- */
 
@@ -129,33 +114,33 @@ impl<
     }
 }
 
-#[async_trait]
-impl<
-    H: virtio_drivers::Hal + Send + Sync + 'static,
-    T: virtio_drivers::transport::Transport + Send + Sync + 'static,
-> AsyncBlockDevice for Arc<VirtioBlockDevice<H, T>>
-{
-    fn device_id(&self) -> u64 {
-        self.device_id()
-    }
+// #[async_trait]
+// impl<
+//     H: virtio_drivers::Hal + Send + Sync + 'static,
+//     T: virtio_drivers::transport::Transport + Send + Sync + 'static,
+// > AsyncBlockDevice for Arc<VirtioBlockDevice<H, T>>
+// {
+//     fn device_id(&self) -> u64 {
+//         self.device_id()
+//     }
 
-    fn block_size_bytes(&self) -> VfsResult<u32> {
-        self.block_size_bytes()
-    }
+//     fn block_size_bytes(&self) -> VfsResult<u32> {
+//         self.block_size_bytes()
+//     }
 
-    fn total_blocks(&self) -> VfsResult<u64> {
-        self.total_blocks()
-    }
+//     fn total_blocks(&self) -> VfsResult<u64> {
+//         self.total_blocks()
+//     }
 
-    async fn read_blocks(&self, start_block: u64, buf: &mut [u8]) -> VfsResult<()> {
-        self.read_blocks(start_block, buf).await
-    }
+//     async fn read_blocks(&self, start_block: u64, buf: &mut [u8]) -> VfsResult<()> {
+//         self.read_blocks(start_block, buf).await
+//     }
 
-    async fn write_blocks(&self, start_block: u64, buf: &[u8]) -> VfsResult<()> {
-        self.write_blocks(start_block, buf).await
-    }
+//     async fn write_blocks(&self, start_block: u64, buf: &[u8]) -> VfsResult<()> {
+//         self.write_blocks(start_block, buf).await
+//     }
 
-    async fn flush(&self) -> VfsResult<()> {
-        self.flush().await
-    }
-}
+//     async fn flush(&self) -> VfsResult<()> {
+//         self.flush().await
+//     }
+// }

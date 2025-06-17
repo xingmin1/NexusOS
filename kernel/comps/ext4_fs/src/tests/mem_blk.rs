@@ -11,7 +11,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, string::{String, ToString}, sync::Arc, vec::{self, Vec}};
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use nexus_error::error_stack::ResultExt;
 use ostd::{prelude::ktest, sync::Mutex, task::{scheduler::blocking_future::BlockingFuture}};
@@ -23,7 +23,7 @@ use vfs::{
     VfsManagerBuilder, VfsResult, VnodeType, types::FileMode,
 };
 
-use another_ext4::{Block, BlockDevice as E4Dev};
+use another_ext4::{Block, BlockDevice};
 
 /// —— 1. 内存块设备实现 ——————————————————————————————————————
 const BLOCK_SIZE: usize = 4096;
@@ -57,15 +57,15 @@ impl MemBlockDev {
     }
 }
 
-impl E4Dev for MemBlockDev {
+impl BlockDevice for MemBlockDev {
     fn read_block(&self, block_id: u64) -> Block {
         let mut buf = vec![0u8; BLOCK_SIZE];
-        let off = block_id * BLOCK_SIZE;
+        let off = block_id as usize * BLOCK_SIZE;
         buf.copy_from_slice(&self.data.lock()[off..off + BLOCK_SIZE]);
         buf
     }
     fn write_block(&self, block: &Block) {
-        let off = block.id() * BLOCK_SIZE;
+        let off = block.id as usize * BLOCK_SIZE;
         self.data.lock()[off..off + block.data().len()].copy_from_slice(block.data());
     }
 }
@@ -192,7 +192,7 @@ fn test_mkdir_readdir_rmdir() {
 #[ktest]
 fn test_symlink_readlink() {
     let t = TestCtx::new();
-    let link = t.root.symlink_node("sym".as_ref(), "etc/passwd".as_ref()).block().unwrap();
+    let link = t.root.symlink_node("sym".as_ref(), &"etc/passwd").block().unwrap();
     let target = link.readlink().block().unwrap();
     assert_eq!(target, "etc/passwd");
 }

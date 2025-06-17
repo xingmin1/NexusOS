@@ -3,17 +3,14 @@
 //! VirtIO-Block MMIO 驱动，封装为 [`MmioDriver`] 供总线自动探测。
 
 use alloc::{collections::btree_map::BTreeMap, string::{String, ToString}, sync::Arc};
+use maitake::sync::Mutex;
 use ostd_macros::ktest;
 use core::ptr::NonNull;
 
 use crate::{
-    bus::{mmio::common_device::MmioCommonDevice, BusProbeError},
-    bus::mmio::{bus::MmioDevice, bus::MmioDriver},
-    trap::IrqLine,
-    io_mem::IoMem,
+    bus::{mmio::{bus::{MmioDevice, MmioDriver}, common_device::MmioCommonDevice}, BusProbeError}, io_mem::IoMem, task::scheduler::blocking_future::BlockingFuture, trap::IrqLine
 };
 
-use spin::Mutex;
 use virtio_drivers::{device::blk::VirtIOBlk, transport::{mmio::{MmioTransport, VirtIOHeader}, DeviceType, Transport}};
 
 use super::hal::RiscvHal;
@@ -63,7 +60,7 @@ impl MmioDriver for VirtioBlkDriver {
         };
 
         // 注册设备
-        let mut block_device_table = BLOCK_DEVICE_TABLE.lock();
+        let mut block_device_table = BLOCK_DEVICE_TABLE.lock().block();
         let mut device_name = [0; 20];
         let len = blk.device_id(&mut device_name).unwrap();
         let device_name = if len > 0 {
@@ -88,7 +85,7 @@ impl MmioDriver for VirtioBlkDriver {
         let mut irq_line_mut = irq_line.clone();
         irq_line_mut.on_active(move |_| {
             if let Some(dev) = weak_dev.upgrade() {
-                let mut guard = dev.lock();
+                let mut guard = dev.lock().block();
                 let _ = guard.ack_interrupt();
             }
         });
@@ -99,8 +96,8 @@ impl MmioDriver for VirtioBlkDriver {
 }
 
 /// 获取 VirtIO-Blk 设备
-pub fn get_block_device(device_name: &str) -> Option<Arc<Mutex<VirtIOBlk<RiscvHal, MmioTransport<'static>>>>> {
-    let block_device_table = BLOCK_DEVICE_TABLE.lock();
+pub async fn get_block_device(device_name: &str) -> Option<Arc<Mutex<VirtIOBlk<RiscvHal, MmioTransport<'static>>>>> {
+    let block_device_table = BLOCK_DEVICE_TABLE.lock().await;
     block_device_table.get(device_name).cloned()
 }
 
@@ -124,18 +121,20 @@ impl MmioDevice for VirtioBlkDevice {
 
 #[cfg(ktest)]
 mod test {
+    use crate::task::scheduler::blocking_future::BlockingFuture;
+
     use super::*;
 
     #[ktest]
     fn test_list_block_device() {
         let _span = tracing::info_span!("list_block_device");
-        let block_device_table = BLOCK_DEVICE_TABLE.lock();
+        let block_device_table = BLOCK_DEVICE_TABLE.lock().block();
         tracing::info!("block_device count: {}", block_device_table.len());
-        block_device_table.iter().for_each(|(name, blk)| {
+        for (name, blk) in block_device_table.iter() {
             tracing::info!("{}", name);
             
             // 测试读写
-            let mut blk = blk.lock();
+            let mut blk = blk.lock().block();
             let mut raw_buf = [0; 512];
             blk.read_blocks(0, &mut raw_buf).unwrap();
             tracing::info!("read: {:?}", raw_buf);
@@ -151,6 +150,6 @@ mod test {
             // 还原
             blk.write_blocks(0, &raw_buf).unwrap();
             blk.flush().unwrap();
-        });
+        }
     }
 }

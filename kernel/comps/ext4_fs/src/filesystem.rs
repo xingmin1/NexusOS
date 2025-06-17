@@ -6,25 +6,23 @@ use ostd::sync::Mutex;
 use tracing::{debug, error};
 
 use vfs::{
-    types::{FilesystemId, MountId}, AsyncFileSystem, AsyncVnode, DirectoryEntry, FilesystemStats, FsOptions, VfsResult, VnodeMetadata, VnodeType
+    types::{FilesystemId, MountId}, vfs_err_unsupported, AsyncFileSystem, AsyncVnode, DirectoryEntry, FilesystemStats, FsOptions, VfsResult, VnodeMetadata, VnodeType
 };
-use another_ext4::{self as ext4, BlockDevice};
+use another_ext4::{self as ext4, BlockDevice, BLOCK_SIZE};
 
 use crate::{block_dev::VirtioBlockDevice, vnode::Ext4Vnode};
 
-pub struct Ext4Fs<D: BlockDevice + ?Sized> {
+pub struct Ext4Fs {
     mount_id: u64,
     fs_id:    u64,
     options:  FsOptions,
-    block:    Arc<D>,
+    block:    Arc<dyn BlockDevice>,
     pub(crate) inner:    Mutex<ext4::Ext4>, // 同步 ext4 实例
 }
 
-impl<D: BlockDevice> Ext4Fs<D> {
-    pub fn new(mount_id: u64, fs_id: u64, options: FsOptions, block: Arc<D>) -> Self {
-        // another_ext4::Ext4::new 需要 Arc<dyn BlockDevice>
-        let dev_for_ext4 = Arc::new(block.clone()) as Arc<dyn ext4::BlockDevice>;
-        let inner = ext4::Ext4::load(dev_for_ext4).expect("ext4 load failed");
+impl Ext4Fs {
+    pub fn new(mount_id: u64, fs_id: u64, options: FsOptions, block: Arc<dyn BlockDevice>) -> Self {
+        let inner = ext4::Ext4::load(block.clone()).expect("ext4 load failed");
         Self { mount_id, fs_id, options, block, inner: Mutex::new(inner) }
     }
 
@@ -36,7 +34,7 @@ impl<D: BlockDevice> Ext4Fs<D> {
 /* ---------- AsyncFileSystem ---------- */
 
 #[async_trait]
-impl<D: BlockDevice + 'static> AsyncFileSystem for Ext4Fs<D> {
+impl AsyncFileSystem for Ext4Fs {
     fn id(&self) -> FilesystemId { self.fs_id as FilesystemId }
 
     fn mount_id(&self) -> MountId { self.mount_id as MountId }
@@ -47,24 +45,25 @@ impl<D: BlockDevice + 'static> AsyncFileSystem for Ext4Fs<D> {
 
     fn is_readonly(&self) -> bool { self.options.read_only }
 
-    async fn root_vnode(&self) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    async fn root_vnode(self: Arc<Self>) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
         Ok(self.root_vnode_arc())
     }
 
     async fn statfs(&self) -> VfsResult<FilesystemStats> {
         // 简易实现
-        Ok(FilesystemStats {
-            block_size: self.block.block_size_bytes()?,
-            total_blocks: self.block.total_blocks()?,
-            free_blocks: 0,
-            avail_blocks: 0,
-            total_inodes: 0,
-            free_inodes: 0,
-            name_max_len: 255,
-            optimal_io_size: Some(self.block.block_size_bytes()? as u64),
-            fs_id: self.fs_id as FilesystemId,
-            fs_type_name: self.fs_type_name().to_string(),
-        })
+        Err(vfs_err_unsupported!("statfs not supported"))
+        // Ok(FilesystemStats {
+        //     block_size: BLOCK_SIZE,
+        //     total_blocks: self.?,
+        //     free_blocks: 0,
+        //     avail_blocks: 0,
+        //     total_inodes: 0,
+        //     free_inodes: 0,
+        //     name_max_len: 255,
+        //     optimal_io_size: Some(self.block.block_size_bytes()? as u64),
+        //     fs_id: self.fs_id as FilesystemId,
+        //     fs_type_name: self.fs_type_name().to_string(),
+        // })
     }
 
     async fn sync(&self) -> VfsResult<()> {

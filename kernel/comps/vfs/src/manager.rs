@@ -276,7 +276,7 @@ impl VfsManager {
         // 更新挂载表
         {
             // 从 fs_instance 获取根 VNode
-            let fs_root_vnode = match fs_instance.root_vnode().await {
+            let fs_root_vnode = match fs_instance.clone().root_vnode().await {
                 // 假设 AsyncFileSystem 有 async fn root(&self) -> error::Result<Arc<dyn AsyncVnode + Send + Sync>> 方法
                 Ok(vnode) => vnode,
                 Err(e) => {
@@ -297,7 +297,7 @@ impl VfsManager {
                 target_path.clone(),
                 MountEntry {
                     mount_id,
-                    fs_instance: Arc::clone(&fs_instance), // 使用正确获取的 fs_instance
+                    fs_instance, // 使用正确获取的 fs_instance
                 },
             );
             mount_points_map.insert(mount_id, target_path.clone());

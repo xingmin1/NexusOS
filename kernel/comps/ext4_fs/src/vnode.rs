@@ -6,16 +6,17 @@
 #![allow(clippy::needless_lifetimes)]
 
 use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+
+use another_ext4::{BlockDevice, Ext4Error, FileAttr, FileType, InodeMode, InodeMode as E4Mode};
 use async_trait::async_trait;
 use ostd::sync::Mutex;
 use tracing::{debug, error, trace};
-
 use vfs::{
-    VfsPath, types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges}, verror::KernelError, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry, OpenFlags, VfsPathBuf, VfsResult, VnodeMetadata, VnodeType
-};
-
-use another_ext4::{
-    Ext4Error, InodeMode, FileAttr, FileType, InodeMode as E4Mode, BlockDevice
+    AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry, OpenFlags,
+    VfsPath, VfsPathBuf, VfsResult, VnodeMetadata, VnodeType,
+    types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges},
+    verror::KernelError,
+    vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported,
 };
 
 use crate::filesystem::Ext4Fs;
@@ -59,23 +60,23 @@ fn attr2meta(fs: &dyn AsyncFileSystem, a: &FileAttr) -> VnodeMetadata {
 
 /* ---------- Ext4Vnode ---------- */
 
-pub struct Ext4Vnode<D: BlockDevice> {
+pub struct Ext4Vnode {
     inode: u32,
-    fs:    Arc<Ext4Fs<D>>, // 具体的 ext4 文件系统
-    kind:  VnodeType,
+    fs: Arc<Ext4Fs>, // 具体的 ext4 文件系统
+    kind: VnodeType,
 }
 
-impl<D: BlockDevice> Ext4Vnode<D> {
-    pub fn new(inode: u32, kind: VnodeType, fs: Arc<Ext4Fs<D>>) -> Arc<Self> {
+impl Ext4Vnode {
+    pub fn new(inode: u32, kind: VnodeType, fs: Arc<Ext4Fs>) -> Arc<Self> {
         Arc::new(Self { inode, kind, fs })
     }
 
-    pub fn new_root(fs: Arc<Ext4Fs<D>>) -> Arc<Self> {
+    pub fn new_root(fs: Arc<Ext4Fs>) -> Arc<Self> {
         Self::new(2, VnodeType::Directory, fs) // ext4 根 inode=2
     }
 
     #[inline]
-    fn as_fs(&self) -> &Ext4Fs<D> {
+    fn as_fs(&self) -> &Ext4Fs {
         &self.fs
     }
 }
@@ -83,10 +84,14 @@ impl<D: BlockDevice> Ext4Vnode<D> {
 /* ---------- AsyncVnode ---------- */
 
 #[async_trait]
-impl<D: BlockDevice + 'static> AsyncVnode for Ext4Vnode<D> where Ext4Fs<D>: AsyncFileSystem + Send + Sync + 'static {
-    fn id(&self) -> u64 { self.inode as u64 }
+impl AsyncVnode for Ext4Vnode {
+    fn id(&self) -> u64 {
+        self.inode as u64
+    }
 
-    fn filesystem(&self) -> Arc<dyn AsyncFileSystem + Send + Sync> { self.fs.clone() }
+    fn filesystem(&self) -> Arc<dyn AsyncFileSystem + Send + Sync> {
+        self.fs.clone()
+    }
 
     async fn metadata(&self) -> VfsResult<VnodeMetadata> {
         let attr = self
@@ -114,10 +119,7 @@ impl<D: BlockDevice + 'static> AsyncVnode for Ext4Vnode<D> where Ext4Fs<D>: Asyn
         Ok(())
     }
 
-    async fn lookup(
-        self: Arc<Self>,
-        name: &OsStr,
-    ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    async fn lookup(self: Arc<Self>, name: &OsStr) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
         let name_str = name;
         let child = self
             .as_fs()
@@ -126,8 +128,18 @@ impl<D: BlockDevice + 'static> AsyncVnode for Ext4Vnode<D> where Ext4Fs<D>: Asyn
             .await
             .lookup(self.inode, name_str)
             .map_err(|_| vfs_err_not_found!(name_str))?;
-        let attr = self.as_fs().inner.lock().await.getattr(child).map_err(map_err)?;
-        Ok(Ext4Vnode::new(child, convert_ftype(attr.ftype), self.fs.clone()))
+        let attr = self
+            .as_fs()
+            .inner
+            .lock()
+            .await
+            .getattr(child)
+            .map_err(map_err)?;
+        Ok(Ext4Vnode::new(
+            child,
+            convert_ftype(attr.ftype),
+            self.fs.clone(),
+        ))
     }
 
     async fn create_node(
@@ -170,7 +182,7 @@ impl<D: BlockDevice + 'static> AsyncVnode for Ext4Vnode<D> where Ext4Fs<D>: Asyn
         _name: &OsStr,
         _target: &VfsPath,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
-        vfs_err_unsupported!("symlink_node not supported")
+        Err(vfs_err_unsupported!("symlink_node not supported"))
         // let mode = InodeMode::SOFTLINK | InodeMode::ALL_RWX;
         // let ino = self
         //     .as_fs()
@@ -233,7 +245,10 @@ impl<D: BlockDevice + 'static> AsyncVnode for Ext4Vnode<D> where Ext4Fs<D>: Asyn
         }))
     }
 
-    async fn open_dir_handle(self: Arc<Self>, flags: OpenFlags) -> VfsResult<Arc<dyn AsyncDirHandle + Send + Sync>> {
+    async fn open_dir_handle(
+        self: Arc<Self>,
+        flags: OpenFlags,
+    ) -> VfsResult<Arc<dyn AsyncDirHandle + Send + Sync>> {
         if self.kind != VnodeType::Directory {
             return Err(vfs_err_invalid_argument!("open_dir_handle on non-dir"));
         }
@@ -284,16 +299,16 @@ impl<D: BlockDevice + 'static> AsyncVnode for Ext4Vnode<D> where Ext4Fs<D>: Asyn
 
 /* ---------- 文件句柄 ---------- */
 
-pub struct Ext4FileHandle<D: BlockDevice> {
-    vnode: Arc<Ext4Vnode<D>>,
+pub struct Ext4FileHandle {
+    vnode: Arc<Ext4Vnode>,
     flags: OpenFlags,
     offset: Mutex<u64>,
 }
 
 #[async_trait]
-impl<D: BlockDevice + 'static> AsyncFileHandle for Ext4FileHandle<D> where Ext4Fs<D>: AsyncFileSystem + Send + Sync + 'static {
+impl AsyncFileHandle for Ext4FileHandle {
     async fn write_at(&self, off: u64, buf: &[u8]) -> VfsResult<usize> {
-        if !self.flags.contains(OpenFlags::WRITE) {
+        if !self.flags.contains(OpenFlags::WRONLY | OpenFlags::RDWR) {
             return Err(vfs_err_invalid_argument!("handle not writable"));
         }
         let sz = self
@@ -308,7 +323,7 @@ impl<D: BlockDevice + 'static> AsyncFileHandle for Ext4FileHandle<D> where Ext4F
     }
 
     async fn read_at(&self, off: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        if !self.flags.is_readable() {
+        if !self.flags.contains(OpenFlags::RDONLY | OpenFlags::RDWR) {
             return Err(vfs_err_invalid_argument!("handle not readable"));
         }
         let sz = self
@@ -345,25 +360,33 @@ impl<D: BlockDevice + 'static> AsyncFileHandle for Ext4FileHandle<D> where Ext4F
         Ok(())
     }
 
-    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> { self.vnode.clone() }
+    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> {
+        self.vnode.clone()
+    }
 
-    fn flags(&self) -> OpenFlags { self.flags }
+    fn flags(&self) -> OpenFlags {
+        self.flags
+    }
 }
 
 /* ---------- 目录句柄 ---------- */
 
-pub struct Ext4DirHandle<D: BlockDevice> {
-    vnode: Arc<Ext4Vnode<D>>,
+pub struct Ext4DirHandle {
+    vnode: Arc<Ext4Vnode>,
     flags: OpenFlags,
     idx: Mutex<usize>,
     entries: Vec<DirectoryEntry>,
 }
 
 #[async_trait]
-impl<D: BlockDevice + 'static> AsyncDirHandle for Ext4DirHandle<D> where Ext4Fs<D>: AsyncFileSystem + Send + Sync + 'static {
-    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> { self.vnode.clone() }
+impl AsyncDirHandle for Ext4DirHandle {
+    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> {
+        self.vnode.clone()
+    }
 
-    fn flags(&self) -> OpenFlags { self.flags }
+    fn flags(&self) -> OpenFlags {
+        self.flags
+    }
 
     async fn readdir(self: Arc<Self>) -> VfsResult<Option<DirectoryEntry>> {
         let mut i = self.idx.lock().await;
@@ -380,5 +403,7 @@ impl<D: BlockDevice + 'static> AsyncDirHandle for Ext4DirHandle<D> where Ext4Fs<
         Ok(())
     }
 
-    async fn close(&self) -> VfsResult<()> { Ok(()) }
+    async fn close(&self) -> VfsResult<()> {
+        Ok(())
+    }
 }

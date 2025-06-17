@@ -52,7 +52,7 @@ macro_rules! vfs_err_not_found {
                 $crate::verror::Errno::ENOENT,
                 "Resource not found"
             )
-        ).attach_printable($desc.to_string())
+        ).attach_printable(alloc::format!("{}", $desc))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_not_found!(alloc::format!($fmt, $($arg)*))
@@ -63,13 +63,15 @@ macro_rules! vfs_err_not_found {
 #[macro_export]
 macro_rules! vfs_err_io_error {
     ($context:expr) => {
-        use alloc::string::ToString;
-        $crate::verror::Report::new(
-            $crate::verror::KernelError::with_message(
-                $crate::verror::Errno::EIO,
-                "I/O Error"
-            )
-        ).attach_printable($context.to_string())
+        {
+            use alloc::string::ToString;
+            $crate::verror::Report::new(
+                $crate::verror::KernelError::with_message(
+                    $crate::verror::Errno::EIO,
+                    "I/O Error"
+                )
+            ).attach_printable(alloc::format!("{}", $context))
+        }
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_io_error!(alloc::format!($fmt, $($arg)*))
@@ -85,7 +87,7 @@ macro_rules! vfs_err_not_dir {
                 $crate::verror::Errno::ENOTDIR,
                 "Not a directory"
             )
-        ).attach_printable($path.to_string())
+        ).attach_printable(alloc::format!("{}", $path))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_not_dir!(alloc::format!($fmt, $($arg)*))
@@ -117,7 +119,7 @@ macro_rules! vfs_err_is_dir {
                 $crate::verror::Errno::EISDIR,
                 "Is a directory"
             )
-        ).attach_printable($path.to_string())
+        ).attach_printable(alloc::format!("{}", $path))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_is_dir!(alloc::format!($fmt, $($arg)*))
@@ -133,7 +135,7 @@ macro_rules! vfs_err_already_exists {
                 $crate::verror::Errno::EEXIST,
                 "Already exists"
             )
-        ).attach_printable($path.to_string())
+        ).attach_printable(alloc::format!("{}", $path))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_already_exists!(alloc::format!($fmt, $($arg)*))
@@ -149,7 +151,7 @@ macro_rules! vfs_err_not_empty {
                 $crate::verror::Errno::ENOTEMPTY,
                 "Directory not empty"
             )
-        ).attach_printable($path.to_string())
+        ).attach_printable(alloc::format!("{}", $path))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_not_empty!(alloc::format!($fmt, $($arg)*))
@@ -165,7 +167,7 @@ macro_rules! vfs_err_name_too_long {
                 $crate::verror::Errno::ENAMETOOLONG,
                 "Name too long"
             )
-        ).attach_printable($name.to_string())
+        ).attach_printable(alloc::format!("{}", $name))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_name_too_long!(alloc::format!($fmt, $($arg)*))
@@ -181,7 +183,7 @@ macro_rules! vfs_err_no_space {
                 $crate::verror::Errno::ENOSPC,
                 "No space left on device"
             )
-        ).attach_printable($device.to_string())
+        ).attach_printable(alloc::format!("{}", $device))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_no_space!(alloc::format!($fmt, $($arg)*))
@@ -197,7 +199,7 @@ macro_rules! vfs_err_permission_denied {
                 $crate::verror::Errno::EPERM,
                 "Permission denied"
             )
-        ).attach_printable($op.to_string())
+        ).attach_printable(alloc::format!("{}", $op))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_permission_denied!(alloc::format!($fmt, $($arg)*))
@@ -213,7 +215,7 @@ macro_rules! vfs_err_invalid_path {
                 $crate::verror::Errno::EINVAL,
                 "Invalid path"
             )
-        ).attach_printable($path.to_string())
+        ).attach_printable(alloc::format!("{}", $path))
     };
     ($fmt:expr, $($arg:tt)*) => {
         vfs_err_invalid_path!(alloc::format!($fmt, $($arg)*))

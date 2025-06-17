@@ -1,3 +1,6 @@
+use ostd::task::scheduler::blocking_future::BlockingFuture;
+use vfs::AsyncBlockDevice;
+
 use crate::constants::*;
 use crate::prelude::*;
 use core::any::Any;
@@ -80,4 +83,21 @@ pub trait BlockDevice: Send + Sync + Any {
     fn read_block(&self, block_id: PBlockId) -> Block;
     /// Write a block to disk.
     fn write_block(&self, block: &Block);
+}
+
+
+impl<D> BlockDevice for D
+where
+    D: AsyncBlockDevice + Send + Sync + 'static + ?Sized,
+{
+    fn read_block(&self, block_id: u64) -> Block {
+        let mut block = Block::default();
+        self.read_blocks(block_id, &mut block.data).block().unwrap();
+        block.id = block_id;
+        block
+    }
+
+    fn write_block(&self, block: &Block) {
+        self.write_blocks(block.id, &block.data).block().unwrap();
+    }
 }

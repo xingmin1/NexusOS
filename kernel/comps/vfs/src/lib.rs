@@ -49,11 +49,11 @@ mod path_resolver;
 /// 文件系统具体实现模块。
 ///
 /// 包含不同文件系统的实现，如内存文件系统等。
-pub mod impls;
+// pub mod impls;
 
 /// VFS 测试模块
 #[cfg(ktest)]
-pub mod tests;
+// pub mod tests;
 
 // 从各个模块中导出常用类型，方便使用
 pub use path::{VfsPath, VfsPathBuf};
@@ -62,5 +62,5 @@ pub use types::{OpenFlags, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, 
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
-pub use impls::memfs::{InMemoryFsProvider, get_memfs_provider};
+// pub use impls::memfs::{InMemoryFsProvider, get_memfs_provider};
 

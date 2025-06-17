@@ -1061,7 +1061,9 @@ version = "0.1.0"
 dependencies = [
  "another_ext4",
  "async-trait",
+ "nexus-error",
  "ostd",
+ "spin 0.10.0",
  "tracing 0.1.41",
  "vfs",
  "virtio-drivers",
@@ -2013,7 +2015,7 @@ dependencies = [
  "sbi-rt",
  "sbi-spec",
  "smallvec",
- "spin 0.9.8",
+ "spin 0.10.0",
  "tdx-guest",
  "tracing 0.1.41",
  "tracing-core 0.1.33",

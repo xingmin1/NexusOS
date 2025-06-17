@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use ostd::sync::RwLock;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{types::{FileMode, Timestamps}, vfs_err_already_exists, vfs_err_invalid_argument, vfs_err_no_space, vfs_err_not_dir, vfs_err_not_implemented, AsyncFileSystem, VfsResult};
+use crate::{types::{FileMode, Timestamps}, vfs_err_already_exists, vfs_err_invalid_argument, vfs_err_not_dir, vfs_err_not_implemented, AsyncFileSystem, VfsResult};
 use crate::{
     path::{VfsPath, VfsPathBuf},
     traits::AsyncVnode,

@@ -246,6 +246,54 @@ impl Core {
         }
     }
 
+    /// 在条件闭包为真时运行此核心。
+    pub fn run_while<F>(&mut self, condition: F)
+    where
+        F: Fn() -> bool,
+    {
+        struct CoreGuard;
+        impl Drop for CoreGuard {
+            fn drop(&mut self) {
+                SCHEDULER.with(|scheduler| scheduler.set(None));
+            }
+        }
+
+        if self
+            .running
+            .compare_exchange(false, true, AcqRel, Acquire)
+            .is_err()
+        {
+            log::error!("this core is already running!");
+            return;
+        }
+
+        SCHEDULER.with(|scheduler| scheduler.set(Some(self.scheduler)));
+        let _unset = CoreGuard;
+
+        log::info!("started kernel main loop");
+
+        loop {
+            if !condition() {
+                log::info!("condition is false, shutting down core={}", self.id);
+                return;
+            }
+
+            // 持续 tick 调度器，直到它表明没有任务可运行。
+            if self.tick() {
+                continue;
+            }
+
+            // 检查此核心是否应该关闭。
+            if !self.is_running() {
+                log::info!("stop signal received, shutting down core={}", self.id);
+                return;
+            }
+
+            // 如果我们没有任务可运行，可以休眠直到发生中断。
+            crate::arch::wait_for_interrupt();
+        }
+    }
+
     fn try_steal(&mut self) -> usize {
         // 如果所有潜在受害者核心的队列都为空或繁忙，不要无限次尝试窃取工作。
         const MAX_STEAL_ATTEMPTS: usize = 16;

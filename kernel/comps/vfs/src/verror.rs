@@ -63,6 +63,7 @@ macro_rules! vfs_err_not_found {
 #[macro_export]
 macro_rules! vfs_err_io_error {
     ($context:expr) => {
+        use alloc::string::ToString;
         $crate::verror::Report::new(
             $crate::verror::KernelError::with_message(
                 $crate::verror::Errno::EIO,

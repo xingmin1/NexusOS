@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="ALL" />
+  </component>
+  <component name="CargoProjects">
+    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml">
+      <package file="$PROJECT_DIR$/ostd/libs/align_ext">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/comps/another_ext4">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/libs/aster-rights">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/libs/aster-rights-proc">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/libs/block-dev">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/maitake/libs/cordyceps">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/comps/ext4_fs">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/id-alloc">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/int-to-c-enum">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/int-to-c-enum/derive">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/linux-bzimage/boot-params">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/linux-bzimage/builder">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/maitake">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/maitake-sync">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/maitake/libs/bitfield">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/maitake/libs/util">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/libs/nexus-error">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/osdk/test-kernel">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/ostd-macros">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/ostd-test">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/libs/typeflags">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/libs/typeflags-util">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/comps/vfs">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/kernel/drivers/virtio-blk">
+        <enabledFeature name="default" />
+      </package>
+      <package file="$PROJECT_DIR$/ostd/libs/virtio-drivers">
+        <enabledFeature name="default" />
+      </package>
+    </cargoProject>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="ebbfc9a9-72e5-4505-bcee-3ac3ad2d5407" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/comps/another_ext4/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/comps/another_ext4/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/comps/another_ext4/src/ext4_defs/block.rs" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/comps/another_ext4/src/ext4_defs/block.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/comps/ext4_fs/src/block_dev.rs" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/comps/ext4_fs/src/block_dev.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ostd/libs/virtio-drivers/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/ostd/libs/virtio-drivers/Cargo.toml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="ROOT_SYNC" value="DONT_SYNC" />
+  </component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="iObPd1fh" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "customColor": "",
+  "associatedIndex": 0
+}]]></component>
+  <component name="ProjectId" id="2yd1w1kcbWcEjLUN45mioLiNxO2" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.rust.reset.selective.auto.import": "true",
+    "git-widget-placeholder": "9b3bcf87",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
+    "settings.editor.selected.configurable": "language.rust.cargo.check",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RdControllerToolWindowsLayoutState" isNewUi="true">
+    <layout>
+      <window_info id="Bookmarks" side_tool="true" />
+      <window_info id="Merge Requests" />
+      <window_info id="Commit_Guest" show_stripe_button="false" />
+      <window_info id="Pull Requests" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.18072642" />
+      <window_info id="Commit" order="1" weight="0.25" />
+      <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
+      <window_info id="Welcome to GitHub Copilot" order="3" />
+      <window_info anchor="bottom" id="Database Changes" />
+      <window_info anchor="bottom" id="TypeScript" />
+      <window_info anchor="bottom" id="Build" />
+      <window_info anchor="bottom" id="TODO" />
+      <window_info anchor="bottom" id="File Transfer" />
+      <window_info anchor="bottom" id="Version Control" order="0" />
+      <window_info anchor="bottom" id="Problems" order="1" />
+      <window_info anchor="bottom" id="Problems View" order="2" />
+      <window_info anchor="bottom" id="Terminal" order="3" />
+      <window_info anchor="bottom" id="Services" order="4" />
+      <window_info anchor="right" id="documentation.v2" show_stripe_button="false" side_tool="true" />
+      <window_info anchor="right" id="Coverage" side_tool="true" />
+      <window_info anchor="right" content_ui="combo" id="Notifications" order="0" weight="0.25" />
+      <window_info anchor="right" id="AIAssistant" order="1" weight="0.25" />
+      <window_info anchor="right" id="Database" order="2" weight="0.25" />
+      <window_info anchor="right" id="Gradle" order="3" weight="0.25" />
+      <window_info anchor="right" id="Maven" order="4" weight="0.25" />
+      <window_info anchor="right" id="Cargo" order="5" weight="0.2" />
+      <window_info anchor="right" id="github.copilotToolWindow" order="5" />
+      <window_info anchor="right" id="RustCargo" order="6" weight="0.33011132" />
+      <window_info anchor="right" id="GitHub Copilot Chat" order="6" />
+    </layout>
+  </component>
+  <component name="RsExternalLinterProjectSettings">
+    <option name="additionalArguments" value="--quiet&#10;--message-format=json&#10;--manifest-path=kernel/Cargo.toml&#10;--target=riscv64gc-unknown-none-elf&#10;-Zbuild-std=core,alloc,compiler_builtins&#10;-Zbuild-std-features=compiler-builtins-mem&#10;-- -Wclippy::pedantic" />
+    <option name="channel" value="nightly" />
+    <option name="tool" value="Clippy" />
+  </component>
+  <component name="RustProjectSettings">
+    <option name="rustcTarget" value="riscv64gc-unknown-none-elf" />
+    <option name="toolchainHomeDirectory" value="$USER_HOME$/.cargo/bin" />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="ebbfc9a9-72e5-4505-bcee-3ac3ad2d5407" name="更改" comment="" />
+      <created>1750149872028</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1750149872028</updated>
+      <workItem from="1750149874475" duration="2087000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
+  </component>
+</project>

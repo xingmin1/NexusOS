@@ -1,0 +1,14 @@
+[package]
+name = "ext4_fs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ostd = { path = "../../../ostd" }
+vfs = { path = "../vfs" }
+virtio-drivers = { path = "../../../ostd/libs/virtio-drivers", version = "0.11.0" }
+async-trait = "0.1.88"
+tracing     = { version = "0.1.41", default-features = false }
+another_ext4 = { path = "../another_ext4" }
+spin = "0.10.0"
+nexus-error = { path = "../../libs/nexus-error" } 

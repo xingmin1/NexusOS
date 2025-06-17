@@ -1,0 +1,13 @@
+# NexusOS 项目主要基于 Mozilla Public License Version 2.0 (MPL 2.0) 许可证发布。
+# 许可证全文请参见项目根目录下的 LICENSE-MPL 文件。
+#
+# NexusOS 项目是在 Asterinas project (MPL 2.0) 的基础上进行修改和开发的。
+#
+# 项目中各部分的版权归其各自的贡献者所有。向 NexusOS 项目贡献代码不需要签署版权转让协议。
+# 完整的作者信息请参考版本控制历史记录。
+#
+# 请注意：NexusOS 项目包含了一些基于其他许可证授权的组件。例如：
+# - ostd/libs/maitake/ 和 ostd/libs/maitake-sync/ 目录下的代码源自 mycelium 项目，
+#   基于 MIT 许可证发布。其许可证文件和版权信息保留在各自目录中。
+#
+# 使用本项目代码时，请确保遵守 MPL 2.0 许可证以及所包含组件的原始许可证要求。

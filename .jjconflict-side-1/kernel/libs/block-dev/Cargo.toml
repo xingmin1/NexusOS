@@ -1,9 +1,0 @@
-# kernel/libs/block-dev/Cargo.toml
-[package]
-name = "block-dev"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ostd = { path = "../../../ostd" }
-spin = "0.10.0"

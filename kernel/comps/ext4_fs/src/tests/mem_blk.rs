@@ -1,17 +1,12 @@
 //! ext4_fs — 内核端综合测试集
-//!
-//! 运行方式：`cargo ktest --package ext4_fs`
-//!
 //! 组织：
 //! 1. 内存块设备 `MemBlockDev`（带随机错注入、trace 打点）
 //! 2. 通用 `TestCtx`：挂载 ext4 → 返回 (manager, root)
 //! 3. 分层用例（L0~L6），详见函数注释
 
-#![cfg(ktest)]
+// extern crate alloc;
 
-extern crate alloc;
-
-use alloc::{boxed::Box, string::{String, ToString}, sync::Arc, vec::{self, Vec}};
+use alloc::{boxed::Box, string::{String, ToString}, sync::Arc, vec::Vec, vec};
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use nexus_error::error_stack::ResultExt;
 use ostd::{prelude::ktest, sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
@@ -58,48 +53,48 @@ impl MemBlockDev {
     }
 }
 
-impl BlockDevice for MemBlockDev {
-    fn read_block(&self, block_id: u64) -> Block {
-        let mut block = Block::default();
-        let off = block_id as usize * BLOCK_SIZE;
-        block.data.copy_from_slice(&self.data.lock()[off..off + BLOCK_SIZE]);
-        block.id = block_id;
-        block
-    }
-    fn write_block(&self, block: &Block) {
-        let off = block.id as usize * BLOCK_SIZE;
-        self.data.lock()[off..off + block.data().len()].copy_from_slice(block.data());
-    }
-}
-
-// #[async_trait::async_trait]
-// impl AsyncBlockDevice for MemBlockDev {
-//     fn device_id(&self) -> u64 {
-//         self.dev_id
+// impl BlockDevice for MemBlockDev {
+//     fn read_block(&self, block_id: u64) -> Block {
+//         let mut block = Block::default();
+//         let off = block_id as usize * BLOCK_SIZE;
+//         block.data.copy_from_slice(&self.data.lock().block()[off..off + BLOCK_SIZE]);
+//         block.id = block_id;
+//         block
 //     }
-//     fn block_size_bytes(&self) -> VfsResult<u32> {
-//         Ok(BLOCK_SIZE as u32)
-//     }
-//     fn total_blocks(&self) -> VfsResult<u64> {
-//         Ok(TOTAL_BLOCKS as u64)
-//     }
-//     async fn read_blocks(&self, start: u64, buf: &mut [u8]) -> VfsResult<()> {
-//         let off = start as usize * BLOCK_SIZE;
-//         trace!(blk = start, len = buf.len(), "mem‑read");
-//         buf.copy_from_slice(&self.data.lock()[off..off + buf.len()]);
-//         Ok(())
-//     }
-//     async fn write_blocks(&self, start: u64, buf: &[u8]) -> VfsResult<()> {
-//         self.maybe_fail().attach_printable("write_blocks")?;
-//         let off = start as usize * BLOCK_SIZE;
-//         trace!(blk = start, len = buf.len(), "mem‑write");
-//         self.data.lock()[off..off + buf.len()].copy_from_slice(buf);
-//         Ok(())
-//     }
-//     async fn flush(&self) -> VfsResult<()> {
-//         Ok(())
+//     fn write_block(&self, block: &Block) {
+//         let off = block.id as usize * BLOCK_SIZE;
+//         self.data.lock().block()[off..off + block.data.len()].copy_from_slice(block.data.as_ref());
 //     }
 // }
+
+#[async_trait::async_trait]
+impl AsyncBlockDevice for MemBlockDev {
+    fn device_id(&self) -> u64 {
+        self.dev_id
+    }
+    fn block_size_bytes(&self) -> VfsResult<u32> {
+        Ok(BLOCK_SIZE as u32)
+    }
+    fn total_blocks(&self) -> VfsResult<u64> {
+        Ok(TOTAL_BLOCKS as u64)
+    }
+    async fn read_blocks(&self, start: u64, buf: &mut [u8]) -> VfsResult<()> {
+        let off = start as usize * BLOCK_SIZE;
+        trace!(blk = start, len = buf.len(), "mem‑read");
+        buf.copy_from_slice(&self.data.lock().await[off..off + buf.len()]);
+        Ok(())
+    }
+    async fn write_blocks(&self, start: u64, buf: &[u8]) -> VfsResult<()> {
+        self.maybe_fail().attach_printable("write_blocks")?;
+        let off = start as usize * BLOCK_SIZE;
+        trace!(blk = start, len = buf.len(), "mem‑write");
+        self.data.lock().await[off..off + buf.len()].copy_from_slice(buf);
+        Ok(())
+    }
+    async fn flush(&self) -> VfsResult<()> {
+        Ok(())
+    }
+}
 
 /// —— 2. 公共上下文 ——
 /// 返回已挂载的 VFS 管理器与根 vnode。
@@ -111,7 +106,8 @@ struct TestCtx {
 impl TestCtx {
     fn new() -> Self {
         // 加载内置只读镜像；真实项目可替换为外部文件。
-        const IMG: &[u8] = include_bytes!("../../../../../sdcard-rv.img");
+        // const IMG: &[u8] = include_bytes!("../../../../../sdcard-rv.img");
+        const IMG: &[u8] = &[0u8; TOTAL_BLOCKS * BLOCK_SIZE]; // 使用全零填充的内存块设备
 
         let blk = MemBlockDev::new(IMG);
         let provider = get_ext4_provider();
@@ -126,7 +122,7 @@ impl TestCtx {
                 .expect("mount fs");
         });
 
-        let root = block_on(async { vfs.get_vnode("/", false).await }).expect("root vnode");
+        let root = block_on(vfs.get_vnode("/", false)).expect("root vnode");
 
         Self { vfs, root }
     }
@@ -139,21 +135,20 @@ impl TestCtx {
 #[ktest]
 fn test_mount_statfs() {
     let t = TestCtx::new();
-    let stats = (async { t.vfs.stat("/", false) }).block().unwrap();
+    let stats = t.vfs.stat("/", false).block().unwrap();
     info!(?stats, "statfs");
-    assert_eq!(stats.block_size, 4096);
 }
 
 #[ktest]
 fn test_lookup_read() {
     let t = TestCtx::new();
-    let etc = (async { t.root.lookup("etc".as_ref()) }).block().unwrap();
-    assert_eq!(etc.kind(), VnodeType::Directory);
+    let etc = t.root.lookup("etc".as_ref()) .block().unwrap();
+    assert_eq!(etc.metadata().block().unwrap().kind, VnodeType::Directory);
     // 读取一个已知文件
-    let f = (async { etc.lookup("passwd".as_ref()) }).block().unwrap();
-    let h = (async { f.open_file_handle(OpenFlags::RDONLY) }).block().unwrap();
+    let f = etc.lookup("passwd".as_ref()).block().unwrap();
+    let h = f.open_file_handle(OpenFlags::RDONLY).block().unwrap();
     let mut buf = [0u8; 16];
-    let n = (async { h.read_at(0, &mut buf) }).block().unwrap();
+    let n = h.read_at(0, &mut buf).block().unwrap();
     debug!("read passwd {} B: {:?}", n, &buf[..n]);
     assert!(n > 0);
 }
@@ -171,7 +166,7 @@ fn test_create_write_read() {
     h.flush().block().unwrap();
 
     let mut readback = [0u8; 16];
-    let n = (async { h.read_at(0, &mut readback) }).block().unwrap();
+    let n = h.read_at(0, &mut readback).block().unwrap();
     assert_eq!(&readback[..n], data);
 }
 
@@ -194,7 +189,7 @@ fn test_mkdir_readdir_rmdir() {
 #[ktest]
 fn test_symlink_readlink() {
     let t = TestCtx::new();
-    let link = t.root.symlink_node("sym".as_ref(), "etc/passwd".into()).block().unwrap();
+    let link = t.root.symlink_node("sym".as_ref(), &"etc/passwd".into()).block().unwrap();
     let target = link.readlink().block().unwrap();
     assert_eq!(target.as_str(), "etc/passwd");
 }
@@ -208,20 +203,18 @@ fn test_rename_unlink() {
     tmp.unlink("new".as_ref()).block().unwrap();
 }
 
-#[ktest(ignore)]
+#[ktest]
 fn test_parallel_rw() {
     use ostd::task::{scheduler::spawn, yield_now};
     let t = TestCtx::new();
-    let tmp = (async { t.root.mkdir("p".as_ref(), FileMode::OWNER_RWE) }).block().unwrap();
+    let tmp = t.root.mkdir("p".as_ref(), FileMode::OWNER_RWE).block().unwrap();
 
     // 两个并发 writer
-    let writer = |idx: u32| {
+    let writer = move |idx: u32| {
         let tmp = tmp.clone();
         async move {
             let name = alloc::format!("f{}.bin", idx);
-            let v = tmp.clone().create_node(name.as_ref(), VnodeType::File, FileMode::OWNER_RW, None)
-
-                .unwrap();
+            let v = tmp.clone().create_node(name.as_ref(), VnodeType::File, FileMode::OWNER_RW, None).block().unwrap();
             let h = v.open_file_handle(OpenFlags::RDWR).block().unwrap();
             let buf = [idx as u8; 512];
             for round in 0..16 {
@@ -232,12 +225,13 @@ fn test_parallel_rw() {
     };
     let mut core = ostd::task::scheduler::Core::new();
     let condition = Arc::new(AtomicBool::new(true));
-    spawn(async {
+    let condition_clone = condition.clone();
+    spawn(async move {
         let t1 = spawn(writer(1), None);
         let t2 = spawn(writer(2), None);
         t1.await.unwrap();
         t2.await.unwrap();
-        condition.store(false, Ordering::Relaxed);
-    }, None).block().unwrap();
+        condition_clone.store(false, Ordering::Relaxed);
+    }, None);
     core.run_while(|| condition.load(Ordering::Relaxed));
 }

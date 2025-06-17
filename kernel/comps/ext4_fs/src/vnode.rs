@@ -5,7 +5,7 @@
 
 #![allow(clippy::needless_lifetimes)]
 
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec, boxed::Box};
 
 use another_ext4::{Ext4Error, FileAttr, FileType, InodeMode, InodeMode as E4Mode};
 use async_trait::async_trait;
@@ -307,7 +307,7 @@ pub struct Ext4FileHandle {
 #[async_trait]
 impl AsyncFileHandle for Ext4FileHandle {
     async fn write_at(&self, off: u64, buf: &[u8]) -> VfsResult<usize> {
-        if !self.flags.contains(OpenFlags::WRONLY | OpenFlags::RDWR) {
+        if !self.flags.intersects(OpenFlags::WRONLY | OpenFlags::RDWR) {
             return Err(vfs_err_invalid_argument!("handle not writable"));
         }
         let sz = self
@@ -322,7 +322,7 @@ impl AsyncFileHandle for Ext4FileHandle {
     }
 
     async fn read_at(&self, off: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        if !self.flags.contains(OpenFlags::RDONLY | OpenFlags::RDWR) {
+        if !self.flags.intersects(OpenFlags::RDONLY | OpenFlags::RDWR) {
             return Err(vfs_err_invalid_argument!("handle not readable"));
         }
         let sz = self

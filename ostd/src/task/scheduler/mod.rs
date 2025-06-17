@@ -497,7 +497,7 @@ pub mod blocking_future {
             loop {
                 match boxed.as_mut().poll(&mut ctx) {
                     Poll::Ready(x) => {
-                        early_println!("finished");
+                        // early_println!("finished");
                         return x;
                     }
                     Poll::Pending => {

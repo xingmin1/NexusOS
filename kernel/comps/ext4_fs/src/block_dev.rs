@@ -95,14 +95,14 @@ impl<
     }
 
     async fn read_blocks(&self, start_block: u64, buf: &mut [u8]) -> VfsResult<()> {
-        debug!(start = start_block, len = buf.len(), "read_blocks");
+        // debug!(start = start_block, len = buf.len(), "read_blocks");
         let sector = Self::blk2sec(start_block);
         self.inner.lock().await.read_blocks(sector, buf).unwrap();
         Ok(())
     }
 
     async fn write_blocks(&self, start_block: u64, buf: &[u8]) -> VfsResult<()> {
-        debug!(start = start_block, len = buf.len(), "write_blocks");
+        // debug!(start = start_block, len = buf.len(), "write_blocks");
         let sector = Self::blk2sec(start_block);
         self.inner.lock().await.write_blocks(sector, buf).unwrap();
         Ok(())

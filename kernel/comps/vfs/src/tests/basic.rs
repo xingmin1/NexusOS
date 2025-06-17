@@ -23,9 +23,16 @@ use tracing::*;
 /// 基础文件操作测试
 #[ostd::prelude::ktest]
 fn test_core() {
-    ostd::task::scheduler::spawn(test_basic_file_operations(), None);
+    let handle1 = ostd::task::scheduler::spawn(test_basic_file_operations(), None);
+    // ostd::task::scheduler::spawn(other_tests, None);
+    let condition = Arc::new(AtomicBool::new(true));
+    let condition_clone = condition.clone();
+    ostd::task::scheduler::spawn(async move{
+        handle1.await.unwrap();
+        condition_clone.store(false, Ordering::Relaxed);
+    }, None);
     let mut core = ostd::task::scheduler::Core::new();
-    core.run();
+    core.run_while(|| condition.load(Ordering::Relaxed));
 }
 
 async fn test_basic_file_operations() {

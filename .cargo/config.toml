@@ -7,10 +7,6 @@ rustflags = [
     "--cfg", "ktest",
 ]
 
-[env]
-# 透传给 rustc/clippy 的 RUSTFLAGS：开启 ktest cfg
-RUSTFLAGS = "--check-cfg cfg(ktest) --cfg ktest"
-
 [unstable]
 # nightly 下的 -Zbuild-std 相关选项
 # 把 core、alloc、compiler_builtins 三个库也用 build-std 编译

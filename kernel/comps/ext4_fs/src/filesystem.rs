@@ -1,6 +1,6 @@
 //! Ext4Fs ‑ VFS::AsyncFileSystem 的实现，内部委托给 another_ext4。
 
-use alloc::sync::Arc;
+use alloc::{sync::Arc, boxed::Box};
 use async_trait::async_trait;
 use ostd::sync::Mutex;
 

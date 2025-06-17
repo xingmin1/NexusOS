@@ -58,7 +58,7 @@ mod path_resolver;
 // 从各个模块中导出常用类型，方便使用
 pub use path::{VfsPath, VfsPathBuf};
 pub use traits::{AsyncFileSystem, AsyncVnode, AsyncFileHandle, AsyncDirHandle, AsyncFileSystemProvider, AsyncBlockDevice};
-pub use types::{OpenFlags, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats};
+pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode};
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};

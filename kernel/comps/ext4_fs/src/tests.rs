@@ -24,7 +24,12 @@ use ostd::task::{scheduler, scheduler::spawn, yield_now};
 use tracing::{debug, error, info};
 
 use crate::get_ext4_provider;
-use vfs::{types::{FileMode, OpenFlags, VnodeType}, AsyncFileSystemProvider, VfsManagerBuilder, VfsResult};
+use vfs::{types::{FileMode, VnodeType}, AccessMode, AsyncFileSystemProvider, FileOpen, OpenStatus, VfsManagerBuilder, VfsResult};
+
+const RW: usize = 2;
+const R: usize = 0;
+const W: usize = 1;
+
 
 /// 业务逻辑放在单个 async 任务里，便于与调度器对接
 async fn test_basic() -> VfsResult<()> {
@@ -48,7 +53,8 @@ async fn test_basic() -> VfsResult<()> {
     let fnode_handle = vfs_manager
         .open(
             "/hello.txt".as_ref(),
-            OpenFlags::CREATE | OpenFlags::RDWR,
+            FileOpen::new(2 | OpenStatus::CREATE.bits()),
+            FileMode::OWNER_RWE,
         )
         .await
         .attach_printable("create file")?;

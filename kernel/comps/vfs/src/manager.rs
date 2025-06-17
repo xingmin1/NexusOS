@@ -23,7 +23,7 @@ use crate::{
     path::{VfsPath, VfsPathBuf},
     traits::{AsyncBlockDevice, AsyncFileSystem, AsyncFileSystemProvider, AsyncVnode},
     types::{FileMode, FilesystemId, FsOptions, MountId},
-    verror::{KernelError, VfsResult}, vfs_err_invalid_argument,
+    verror::{KernelError, VfsResult}, vfs_err_invalid_argument, FileOpen,
 };
 
 /// VFS管理器结构体
@@ -662,7 +662,8 @@ impl VfsManager {
     pub async fn open(
         &self,
         path_str: &str,
-        flags: crate::types::OpenFlags,
+        flags: FileOpen,
+        mode: FileMode,
     ) -> VfsResult<Arc<dyn crate::traits::AsyncFileHandle + Send + Sync>> {
         // 尝试直接获取 vnode
         let vnode_res = self.get_vnode(path_str, true).await;
@@ -671,7 +672,7 @@ impl VfsManager {
             Ok(v) => v,
             Err(e) => {
                 // 如果失败且包含 CREATE，则尝试创建
-                if flags.contains(crate::types::OpenFlags::CREATE) {
+                if flags.should_create() {
                     // 解析父目录和文件名
                     let path = crate::path::VfsPathBuf::new(path_str.to_string())?;
                     let parent_path = VfsPath::from(&path).parent().ok_or_else(|| {
@@ -686,7 +687,7 @@ impl VfsManager {
                     // 创建文件节点
                     let new_vnode = parent_vnode
                         .clone()
-                        .create_node(file_name, crate::types::VnodeType::File, crate::types::FileMode::OWNER_RW | crate::types::FileMode::GROUP_RW | crate::types::FileMode::OTHER_RW, None)
+                        .create_node(file_name, crate::types::VnodeType::File, mode, None)
                         .await?;
                     new_vnode
                 } else {
@@ -1040,7 +1041,7 @@ impl VfsManager {
         // 打开目录句柄
         let dir_handle = dir_vnode
             .clone()
-            .open_dir_handle(crate::types::OpenFlags::RDONLY)
+            .open_dir_handle(FileOpen::new(0).unwrap())
             .await
             .change_context_lazy(|| KernelError::new(Errno::EIO))
             .attach_printable(format!("打开目录 '{}' 失败", path_str))?;

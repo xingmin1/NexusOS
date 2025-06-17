@@ -10,13 +10,7 @@ use alloc::{sync::Arc, vec::Vec, boxed::Box};
 use another_ext4::{Ext4Error, FileAttr, FileType, InodeMode, InodeMode as E4Mode};
 use async_trait::async_trait;
 use ostd::sync::Mutex;
-use vfs::{
-    types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges}, verror::KernelError, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported,
-    AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry,
-    OpenFlags,
-    VfsPath,
-    VfsPathBuf, VfsResult, VnodeMetadata, VnodeType,
-};
+use vfs::{types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges}, verror::KernelError, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry, FileOpen, VfsPath, VfsPathBuf, VfsResult, VnodeMetadata, VnodeType};
 
 use crate::filesystem::Ext4Fs;
 
@@ -232,7 +226,7 @@ impl AsyncVnode for Ext4Vnode {
 
     async fn open_file_handle(
         self: Arc<Self>,
-        flags: OpenFlags,
+        flags: FileOpen,
     ) -> VfsResult<Arc<dyn AsyncFileHandle + Send + Sync>> {
         if self.kind != VnodeType::File {
             return Err(vfs_err_invalid_argument!("open_file_handle on non‑file"));
@@ -246,7 +240,7 @@ impl AsyncVnode for Ext4Vnode {
 
     async fn open_dir_handle(
         self: Arc<Self>,
-        flags: OpenFlags,
+        flags: FileOpen,
     ) -> VfsResult<Arc<dyn AsyncDirHandle + Send + Sync>> {
         if self.kind != VnodeType::Directory {
             return Err(vfs_err_invalid_argument!("open_dir_handle on non-dir"));
@@ -300,29 +294,22 @@ impl AsyncVnode for Ext4Vnode {
 
 pub struct Ext4FileHandle {
     vnode: Arc<Ext4Vnode>,
-    flags: OpenFlags,
+    flags: FileOpen,
     offset: Mutex<u64>,
 }
 
 #[async_trait]
 impl AsyncFileHandle for Ext4FileHandle {
-    async fn write_at(&self, off: u64, buf: &[u8]) -> VfsResult<usize> {
-        if !self.flags.intersects(OpenFlags::WRONLY | OpenFlags::RDWR) {
-            return Err(vfs_err_invalid_argument!("handle not writable"));
-        }
-        let sz = self
-            .vnode
-            .as_fs()
-            .inner
-            .lock()
-            .await
-            .write(self.vnode.inode, off as usize, buf)
-            .map_err(map_err)?;
-        Ok(sz)
+    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> {
+        self.vnode.clone()
+    }
+
+    fn flags(&self) -> FileOpen {
+        self.flags
     }
 
     async fn read_at(&self, off: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        if !self.flags.intersects(OpenFlags::RDONLY | OpenFlags::RDWR) {
+        if !self.flags.is_readable() {
             return Err(vfs_err_invalid_argument!("handle not readable"));
         }
         let sz = self
@@ -332,6 +319,21 @@ impl AsyncFileHandle for Ext4FileHandle {
             .lock()
             .await
             .read(self.vnode.inode, off as usize, buf)
+            .map_err(map_err)?;
+        Ok(sz)
+    }
+
+    async fn write_at(&self, off: u64, buf: &[u8]) -> VfsResult<usize> {
+        if !self.flags.is_writable() {
+            return Err(vfs_err_invalid_argument!("handle not writable"));
+        }
+        let sz = self
+            .vnode
+            .as_fs()
+            .inner
+            .lock()
+            .await
+            .write(self.vnode.inode, off as usize, buf)
             .map_err(map_err)?;
         Ok(sz)
     }
@@ -358,21 +360,13 @@ impl AsyncFileHandle for Ext4FileHandle {
         // nothing to do
         Ok(())
     }
-
-    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> {
-        self.vnode.clone()
-    }
-
-    fn flags(&self) -> OpenFlags {
-        self.flags
-    }
 }
 
 /* ---------- 目录句柄 ---------- */
 
 pub struct Ext4DirHandle {
     vnode: Arc<Ext4Vnode>,
-    flags: OpenFlags,
+    flags: FileOpen,
     idx: Mutex<usize>,
     entries: Vec<DirectoryEntry>,
 }
@@ -383,7 +377,7 @@ impl AsyncDirHandle for Ext4DirHandle {
         self.vnode.clone()
     }
 
-    fn flags(&self) -> OpenFlags {
+    fn flags(&self) -> FileOpen {
         self.flags
     }
 

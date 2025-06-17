@@ -3,9 +3,7 @@
 //! 本文件定义了 VFS 的核心抽象接口，包括文件系统、Vnode、文件句柄等。
 
 use crate::{path::{VfsPath, VfsPathBuf}, types::FileMode, vfs_err_unsupported};
-use crate::types::{
-    DirectoryEntry, FilesystemId, FilesystemStats, FsOptions, MountId, OpenFlags, SeekFrom, VnodeId, VnodeMetadata, VnodeMetadataChanges, VnodeType
-};
+use crate::types::{DirectoryEntry, FileOpen, FilesystemId, FilesystemStats, FsOptions, MountId, SeekFrom, VnodeId, VnodeMetadata, VnodeMetadataChanges, VnodeType};
 use crate::verror::{VfsResult}; // 采用 error_stack 错误链方案，所有错误返回值均为 VfsResult
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -146,13 +144,13 @@ pub trait AsyncVnode: Send + Sync + 'static {
     /// 打开文件并返回文件句柄。
     async fn open_file_handle(
         self: Arc<Self>,
-        flags: OpenFlags,
+        flags: FileOpen,
     ) -> VfsResult<Arc<dyn AsyncFileHandle + Send + Sync>>;
 
     /// 打开目录并返回目录句柄。
     async fn open_dir_handle(
         self: Arc<Self>,
-        flags: OpenFlags,
+        flags: FileOpen,
     ) -> VfsResult<Arc<dyn AsyncDirHandle + Send + Sync>>;
 
     /// 读取符号链接的目标路径。
@@ -168,7 +166,7 @@ pub trait AsyncFileHandle: Send + Sync + 'static {
     fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync>;
 
     /// 返回打开文件时使用的标志。
-    fn flags(&self) -> OpenFlags;
+    fn flags(&self) -> FileOpen;
 
     /// 从指定偏移量读取数据到缓冲区。
     async fn read_at(&self, offset: u64, buf: &mut [u8]) -> VfsResult<usize>;
@@ -219,7 +217,7 @@ pub trait AsyncDirHandle: Send + Sync + 'static {
     fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync>;
 
     /// 返回打开目录时使用的标志。
-    fn flags(&self) -> OpenFlags;
+    fn flags(&self) -> FileOpen;
 
     /// 读取下一个目录条目。
     async fn readdir(self: Arc<Self>) -> VfsResult<Option<DirectoryEntry>>;

@@ -566,7 +566,7 @@ impl VfsManager {
     ///
     /// # 返回
     /// 最匹配的挂载点路径，如果没有匹配的挂载点，则返回根目录 "/"
-    async fn find_mount_point_for_path(&self, path: &PathSlice<'_>) -> VfsResult<PathBuf> {
+    pub async fn find_mount_point_for_path(&self, path: &PathSlice<'_>) -> VfsResult<PathBuf> {
         // 获取挂载表读锁
         let mount_table = self.mount_table.read().await;
 

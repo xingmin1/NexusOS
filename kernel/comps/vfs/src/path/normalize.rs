@@ -43,6 +43,7 @@ pub fn normalize(s: &str) -> VfsResult<Cow<'_, str>> {
 }
 
 /// 只读组件迭代器
+#[derive(Clone)]
 pub struct Components<'a> {
     inner: core::str::Split<'a, char>,
 }

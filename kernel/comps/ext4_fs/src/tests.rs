@@ -19,6 +19,7 @@ extern crate alloc;
 
 use alloc::{format, sync::Arc, vec::Vec};
 use vfs::verror::KernelError;
+use vfs::VfsManager;
 use core::sync::atomic::{AtomicBool, Ordering};
 use nexus_error::error_stack::ResultExt;
 use ostd::prelude::ktest;
@@ -37,24 +38,28 @@ const W: usize = 1;
 async fn test_basic() -> VfsResult<()> {
     // --- 1. 挂载 ---
     let provider: Arc<dyn AsyncFileSystemProvider + Send + Sync> = get_ext4_provider();
-    let mut vfs_manager = VfsManagerBuilder::new().provider(provider).build();
+    let mut vfs_manager = VfsManager::builder().provider(provider).build();
     vfs_manager.mount(None, "/", "ext4", Default::default())
         .await
         .attach_printable("mount ext4")?;
 
+    let (_, mount_info, _) = vfs_manager.locate_mount("/".as_ref()).await?;
+    let fs = mount_info.fs;
+    let root_vnode = fs.root_vnode().await?;
+
     info!("root mounted");
 
     // --- 2. mkdir ---
-    vfs_manager
-        .mkdir("/ktest".as_ref(), FileMode::OWNER_RWE)
+    root_vnode
+        .mkdir("ktest".as_ref(), FileMode::OWNER_RWE)
         .await
         .attach_printable("mkdir ktest")?;
     debug!("mkdir ok");
 
     // --- 3. create file & write ---
-    let fnode_handle = vfs_manager
+    let fnode_handle = root_vnode
         .open(
-            "/hello.txt".as_ref(),
+            "hello.txt".as_ref(),
             FileOpen::new(2 | OpenStatus::CREATE.bits()).change_context_lazy(|| KernelError::new(Errno::EINVAL))?,
             FileMode::OWNER_RWE,
         )

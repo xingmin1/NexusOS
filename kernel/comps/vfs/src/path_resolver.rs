@@ -1,28 +1,40 @@
-//! 迭代式路径解析器（无递归）
-//
-//! * 参考 Linux `link_path_walk`
-//! * 符号链接解析深度限制可配置
-//! * `..` 解析在同一文件系统内向上遍历，跨挂载点回落到父 FS 根
-use alloc::{string::ToString, sync::Arc};
+//! 迭代式路径解析器：零递归、零 Box。
+//!
+//! 算法：外层 loop 维护“尚未解析完的绝对路径”；
+//!       walk_one_mount() 负责在当前挂载内遍历组件；
+//!       一旦遇到需跟随的符号链接，立即返回新绝对路径，外层 loop 重启。
+//!
+//! 性能：单次遍历 O(|path|)；遇到 n 个链接最多循环 n+1 次。
+//! 锁顺序：dcache → vnode
+
+use alloc::sync::Arc;
 
 use crate::{
     cache::DentryCache,
-    path::{PathSlice, PathBuf},
+    path::{PathBuf, PathSlice},
     traits::AsyncVnode,
     types::VnodeType,
-    verror::{KernelError, VfsResult, Errno},
+    verror::{Errno, KernelError, VfsResult},
 };
 
-/// 单次解析器，避免在 `VfsManager` 留过多逻辑
+/// 每次 walk 的结果
+enum Step {
+    /// 到达最终 Vnode
+    Done(Arc<dyn AsyncVnode + Send + Sync>),
+    /// 解析过程中遇到符号链接，需要以新绝对路径重启
+    Restart(PathBuf),
+}
+
+/// 单次解析器（不可跨线程共享）
 pub struct PathResolver<'m> {
-    mgr: &'m crate::VfsManager,
-    dcache: &'m DentryCache,
+    mgr:        &'m crate::VfsManager,
+    dcache:     &'m DentryCache,
     follow_last_symlink: bool,
     max_symlink: u32,
 }
 
 impl<'m> PathResolver<'m> {
-    /// 创建新解析器
+    /// 构造
     pub const fn new(
         mgr: &'m crate::VfsManager,
         dcache: &'m DentryCache,
@@ -31,87 +43,94 @@ impl<'m> PathResolver<'m> {
         Self { mgr, dcache, follow_last_symlink, max_symlink: 40 }
     }
 
-    /// 主入口：解析绝对路径
+    /// 公开接口：解析绝对路径
+    ///
+    /// # 参数
+    /// * `abs_raw` —— **必须**以 `/` 开头的 UTF‑8 字符串
     pub async fn resolve(
         &self,
         abs_raw: &str,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
-        let abs = PathSlice::new(abs_raw)?;
-        if !abs.is_absolute() {
+        // 预规范化
+        let mut todo = PathBuf::new(abs_raw)?;
+        if !PathSlice::from(&todo).is_absolute() {
             return Err(crate::vfs_err_invalid_argument!("path must be absolute"));
         }
 
-        // 找到挂载点
-        let (_mount_path, info, mut rel) = self.mgr.locate_mount(&abs).await?;
-        let fs = info.fs.clone();
-
-        // 根 vnode
-        let mut current = fs.root_vnode().await?;
-
-        // 逐组件
-        let mut symlink_depth = 0u32;
+        let mut depth = 0;
         loop {
-            // 消耗前导 '/'
-            if rel.as_str() == "/" || rel.as_str().is_empty() {
-                return Ok(current);
+            if depth > self.max_symlink {
+                return Err(KernelError::with_message(Errno::ELOOP, "too many symlinks").into());
             }
 
-            // 拿到迭代器（不可重用）
-            let mut iter = PathSlice::from(&rel).components();
-            let Some(comp) = iter.next() else { return Ok(current); };
+            match self.walk_one_mount(&todo).await? {
+                Step::Done(v)      => return Ok(v),
+                Step::Restart(p) => { todo = p; depth += 1; }
+            }
+        }
+    }
 
-            let is_last = iter.clone().next().is_none(); // look‑ahead
+    /// 在 **单一挂载** 内遍历组件；遇到需跟随的符号链接即返回 Restart。
+    async fn walk_one_mount(&self, abs: &PathBuf) -> VfsResult<Step> {
+        // 1. 锁定挂载信息
+        let (_mnt_path, mnt_info, rel) = self.mgr.locate_mount(&abs.into()).await?;
+        let fs = mnt_info.fs.clone();
+        let mut current = fs.root_vnode().await?;
 
-            // dentry 缓存
-            let child = if let Some(v) = self
-                .dcache
-                .get(&rel.to_slice().parent().unwrap_or(PathSlice::from("/")).to_owned_buf(), comp)
-                .await
-            {
+        // 空 / 根路径直接返回
+        if rel.as_str() == "/" || rel.as_str().is_empty() {
+            return Ok(Step::Done(current));
+        }
+
+        // 2. 遍历组件
+        let mut path_prefix = alloc::string::String::from(_mnt_path.as_str());   // 用于构造新绝对路径
+        if !path_prefix.ends_with('/') { path_prefix.push('/'); }
+
+        let mut comps = PathSlice::from(&rel).components().peekable();
+        while let Some(seg) = comps.next() {
+            let is_last = comps.peek().is_none();
+
+            // --- dentry 缓存 ---
+            let dir_key = PathSlice::from(&PathBuf::from_str_unchecked(path_prefix.clone()))
+                .parent()
+                .unwrap_or(PathSlice::from("/"))
+                .to_owned_buf();
+
+            let child = if let Some(v) = self.dcache.get(&dir_key, seg).await {
                 v
             } else {
-                let vnode = current.clone().lookup(comp).await?;
-                self.dcache
-                    .put(rel.to_slice().parent().unwrap_or(PathSlice::from("/")).to_owned_buf(), comp, vnode.clone())
-                    .await;
-                vnode
+                let v = current.clone().lookup(seg).await?;
+                self.dcache.put(dir_key, seg, v.clone()).await;
+                v
             };
 
-            // 处理符号链接
+            // --- 符号链接处理 ---
             if child.metadata().await?.kind == VnodeType::SymbolicLink
                 && (self.follow_last_symlink || !is_last)
             {
-                symlink_depth += 1;
-                if symlink_depth > self.max_symlink {
-                    return Err(KernelError::with_message(Errno::ELOOP, "too many symlinks").into());
-                }
-
-                let target = child.readlink().await?;
-                let mut next_path = if PathSlice::from(&target).is_absolute() {
+                let target = child.readlink().await?; // 可能是绝对或相对
+                // 1. 绝对：直接替换
+                // 2. 相对：基于 path_prefix 构造
+                let mut new_abs = if PathSlice::from(&target).is_absolute() {
                     target
                 } else {
-                    rel.to_slice().parent().unwrap().join(&target)?
+                    let mut s = path_prefix.clone();           // 已含到当前目录
+                    s.push_str(target.as_str());
+                    PathBuf::new(s)?
                 };
 
-                // 尾部追加剩余
-                for c in iter {
-                    next_path = PathSlice::from(&next_path).join(c)?;
+                // 将 comps 剩余部分附在尾部
+                for rest in comps {
+                    new_abs = PathSlice::from(&new_abs).join(rest)?;
                 }
-                // 重新自顶向下解析
-                return self.resolve(next_path.as_str()).await;
+                return Ok(Step::Restart(new_abs));
             }
 
-            // 进入下一层
+            // 前进
             current = child;
-            // 生成剩余路径
-            rel = {
-                let mut buf = current.filesystem().fs_type_name().to_string(); // 只是临时容器
-                buf.clear();
-                // 相对路径 = 去掉前一个组件
-                let offset = if rel.to_slice().is_root() { 1 } else { comp.len() + 1 };
-                let s = &rel.as_str()[offset + (if rel.as_str().starts_with('/') { 1 } else { 0 })..];
-                PathBuf::new(if s.is_empty() { "/" } else { s })?
-            };
+            if !path_prefix.ends_with('/') { path_prefix.push('/'); }
+            path_prefix.push_str(seg);
         }
+        Ok(Step::Done(current))
     }
 }

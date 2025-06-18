@@ -12,7 +12,7 @@ use alloc::{
 use nexus_os_vfs::{
     VfsManager, VfsManagerBuilder, get_memfs_provider,
     types::{OpenFlags, VnodeType, DirectoryEntry},
-    path::VfsPathBuf,
+    path::PathBuf,
 };
 use maitake::scheduler::Scheduler;
 use nexus_error::Errno;

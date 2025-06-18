@@ -10,7 +10,7 @@ use ostd::arch::qemu::{exit_qemu, QemuExitCode};
 
 use crate::{
     get_memfs_provider,
-    path::VfsPathBuf,
+    path::PathBuf,
     types::{DirectoryEntry, FileMode, OpenFlags, TimestampsToSet, VnodeType},
     VfsManager, VfsManagerBuilder,
 };

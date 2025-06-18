@@ -7,7 +7,7 @@ use alloc::{collections::btree_map::BTreeMap as HashMap, sync::Arc};
 
 use ostd::sync::RwLock;
 
-use crate::{path::VfsPathBuf, traits::AsyncVnode, types::VnodeId};
+use crate::{path::PathBuf, traits::AsyncVnode, types::VnodeId};
 
 /// Vnode缓存，用于缓存常用的Vnode对象
 ///
@@ -89,7 +89,7 @@ impl VnodeCache {
 /// 这个缓存可以加速路径解析过程，避免重复的目录查找操作。
 pub struct DentryCache {
     // 键是目录路径和文件名的组合，值是对应的Vnode
-    cache: RwLock<HashMap<(VfsPathBuf, AllocString), Arc<dyn AsyncVnode + Send + Sync>>>,
+    cache: RwLock<HashMap<(PathBuf, AllocString), Arc<dyn AsyncVnode + Send + Sync>>>,
     capacity: usize, // 缓存容量上限
 }
 
@@ -117,7 +117,7 @@ impl DentryCache {
     /// 如果找到，返回缓存的Vnode；否则返回None
     pub async fn get(
         &self,
-        dir_path: &VfsPathBuf,
+        dir_path: &PathBuf,
         name: &str,
     ) -> Option<Arc<dyn AsyncVnode + Send + Sync>> {
         let cache = self.cache.read().await;
@@ -134,7 +134,7 @@ impl DentryCache {
     /// - `vnode`: 对应的Vnode
     pub async fn put(
         &self,
-        dir_path: VfsPathBuf,
+        dir_path: PathBuf,
         name: &str,
         vnode: Arc<dyn AsyncVnode + Send + Sync>,
     ) {
@@ -155,7 +155,7 @@ impl DentryCache {
     ///
     /// # 参数
     /// - `dir_path`: 被修改的目录路径
-    pub async fn invalidate_dir(&self, dir_path: &VfsPathBuf) {
+    pub async fn invalidate_dir(&self, dir_path: &PathBuf) {
         let mut cache = self.cache.write().await;
         cache.retain(|(path, _), _| path != dir_path);
     }

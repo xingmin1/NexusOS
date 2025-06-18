@@ -11,7 +11,7 @@ use another_ext4::{Ext4Error, FileAttr, FileType, InodeMode, InodeMode as E4Mode
 use async_trait::async_trait;
 use nexus_error::{error_stack::{Report, ResultExt}, Errno};
 use ostd::sync::Mutex;
-use vfs::{types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges}, verror::KernelError, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry, FileOpen, VfsPath, VfsPathBuf, VfsResult, VnodeMetadata, VnodeType};
+use vfs::{types::{FileMode, OsStr, SeekFrom, VnodeMetadataChanges}, verror::KernelError, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, AsyncDirHandle, AsyncFileHandle, AsyncFileSystem, AsyncVnode, DirectoryEntry, FileOpen, PathSlice, PathBuf, VfsResult, VnodeMetadata, VnodeType};
 
 use crate::filesystem::Ext4Fs;
 
@@ -174,7 +174,7 @@ impl AsyncVnode for Ext4Vnode {
     async fn symlink_node(
         self: Arc<Self>,
         _name: &OsStr,
-        _target: &VfsPath,
+        _target: &PathSlice,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
         Err(vfs_err_unsupported!("symlink_node not supported"))
         // let mode = InodeMode::SOFTLINK | InodeMode::ALL_RWX;
@@ -276,7 +276,7 @@ impl AsyncVnode for Ext4Vnode {
         }))
     }
 
-    async fn readlink(self: Arc<Self>) -> VfsResult<VfsPathBuf> {
+    async fn readlink(self: Arc<Self>) -> VfsResult<PathBuf> {
         if self.kind != VnodeType::SymbolicLink {
             return Err(vfs_err_invalid_argument!("readlink on non‑symlink"));
         }

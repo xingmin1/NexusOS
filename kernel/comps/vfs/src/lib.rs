@@ -11,7 +11,7 @@ extern crate alloc;
 // 目标是提供一个统一的接口，供不同的文件系统实现插入，并为内核其他部分
 // 提供标准的文件操作API。
 
-/// 路径操作模块 (`VfsPath`, `VfsPathBuf`)。
+/// 路径操作模块 (`PathSlice`, `PathBuf`)。
 ///
 /// 提供了处理和规范化文件系统路径的类型和函数。
 pub mod path;
@@ -56,7 +56,7 @@ mod path_resolver;
 // pub mod tests;
 
 // 从各个模块中导出常用类型，方便使用
-pub use path::{VfsPath, VfsPathBuf};
+pub use path::{PathSlice, PathBuf};
 pub use traits::{AsyncFileSystem, AsyncVnode, AsyncFileHandle, AsyncDirHandle, AsyncFileSystemProvider, AsyncBlockDevice};
 pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode};
 pub use verror::{VfsResult};

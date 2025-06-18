@@ -9,7 +9,7 @@ use nexus_error::error_stack::{bail, report, ResultExt};
 
 use crate::{
     manager::VfsManager,
-    path::{VfsPath, VfsPathBuf},
+    path::{PathSlice, PathBuf},
     traits::AsyncVnode,
     types::VnodeType,
     verror::{Errno, KernelError, VfsResult},
@@ -26,12 +26,12 @@ impl VfsManager {
     /// 如果找到匹配的挂载点，返回(文件系统实例, 剩余路径, 挂载点路径)；否则返回None
     pub(crate) async fn find_mount_point_details_for_path(
         self_arc: Arc<Self>,
-        absolute_path: &VfsPath<'_>,
+        absolute_path: &PathSlice<'_>,
     ) -> VfsResult<
         Option<(
             Arc<dyn AsyncFileSystem + Send + Sync>, // 文件系统实例
-            VfsPathBuf,                             // 剩余路径（相对于挂载点）
-            VfsPathBuf,                             // 挂载点路径
+            PathBuf,                             // 剩余路径（相对于挂载点）
+            PathBuf,                             // 挂载点路径
         )>,
     > {
         // 验证路径是绝对路径
@@ -47,7 +47,7 @@ impl VfsManager {
 
         // 查找最长匹配的挂载点
         // [TODO]: 性能优化点，当前遍历HashMap
-        let mut best_match: Option<(VfsPathBuf, MountEntry)> = None;
+        let mut best_match: Option<(PathBuf, MountEntry)> = None;
         let mut best_match_len = 0;
 
         for (mount_point, entry) in mount_table.iter() {
@@ -84,7 +84,7 @@ impl VfsManager {
             };
 
             // 转换为VfsPathBuf
-            let remaining_path_buf = VfsPathBuf::new(remaining_path.to_string())?;
+            let remaining_path_buf = PathBuf::new(remaining_path.to_string())?;
 
             return Ok(Some((entry.fs_instance, remaining_path_buf, mount_point)));
         }
@@ -110,7 +110,7 @@ impl VfsManager {
         self_arc: Arc<Self>,
         mut current_vnode: Arc<dyn AsyncVnode + Send + Sync>,
         parent_of_current_for_symlink_resolution: Arc<dyn AsyncVnode + Send + Sync>,
-        relative_path: &VfsPath<'_>,
+        relative_path: &PathSlice<'_>,
         follow_last_symlink: bool,
         symlink_depth: &mut u32,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
@@ -161,7 +161,7 @@ impl VfsManager {
                 .dentry_cache
                 .get(
                     // 使用new方法代替不存在的from_path，并使用fs_type_name替代to_string
-                    &VfsPathBuf::new(current_vnode.filesystem().fs_type_name().to_string())?,
+                    &PathBuf::new(current_vnode.filesystem().fs_type_name().to_string())?,
                     component,
                 )
                 .await
@@ -204,7 +204,7 @@ impl VfsManager {
                     .map_err(|_| KernelError::with_message(Errno::EIO, "读取符号链接失败"))?;
 
                 // 处理符号链接目标
-                let link_target_path: VfsPath<'_> = (&link_target).into();
+                let link_target_path: PathSlice<'_> = (&link_target).into();
                 if link_target_path.is_absolute() {
                     // 如果是绝对路径，从全局路径解析
                     return self_arc
@@ -221,11 +221,11 @@ impl VfsManager {
                     let mut remaining_path = link_target;
 
                     for comp in components {
-                        remaining_path = VfsPath::from(&remaining_path).join(comp)?;
+                        remaining_path = PathSlice::from(&remaining_path).join(comp)?;
                     }
 
                     // 在当前目录上下文中解析相对路径
-                    let remaining_path_vfs: VfsPath<'_> = (&remaining_path).into();
+                    let remaining_path_vfs: PathSlice<'_> = (&remaining_path).into();
                     return Box::pin(Self::resolve_path_segments_within_fs(
                         self_arc,
                         parent_of_current_for_symlink_resolution.clone(),
@@ -259,7 +259,7 @@ impl VfsManager {
     /// 解析到的Vnode
     pub(crate) async fn get_vnode_from_global_path_internal(
         self: Arc<Self>,
-        path: &VfsPath<'_>,
+        path: &PathSlice<'_>,
         follow_last_symlink: bool,
         symlink_depth: &mut u32,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
@@ -280,7 +280,7 @@ impl VfsManager {
             .change_context_lazy(|| KernelError::with_message(Errno::EIO, "获取文件系统根节点失败"))?;
 
         // 在文件系统内解析剩余路径
-        let remaining_path_vfs: VfsPath<'_> = (&remaining_path).into();
+        let remaining_path_vfs: PathSlice<'_> = (&remaining_path).into();
         Box::pin(Self::resolve_path_segments_within_fs(
             self.clone(),
             root_vnode.clone(),

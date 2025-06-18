@@ -2,7 +2,7 @@
 //!
 //! 本文件定义了 VFS 的核心抽象接口，包括文件系统、Vnode、文件句柄等。
 
-use crate::{path::{VfsPath, VfsPathBuf}, types::FileMode, vfs_err_unsupported};
+use crate::{path::{PathSlice, PathBuf}, types::FileMode, vfs_err_unsupported};
 use crate::types::{DirectoryEntry, FileOpen, FilesystemId, FilesystemStats, FsOptions, MountId, SeekFrom, VnodeId, VnodeMetadata, VnodeMetadataChanges, VnodeType};
 use crate::verror::{VfsResult}; // 采用 error_stack 错误链方案，所有错误返回值均为 VfsResult
 use alloc::boxed::Box;
@@ -124,7 +124,7 @@ pub trait AsyncVnode: Send + Sync + 'static {
     async fn symlink_node(
         self: Arc<Self>,
         name: &OsStr,
-        target: &VfsPath,
+        target: &PathSlice,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>>;
 
     /// 删除一个文件或符号链接。
@@ -154,7 +154,7 @@ pub trait AsyncVnode: Send + Sync + 'static {
     ) -> VfsResult<Arc<dyn AsyncDirHandle + Send + Sync>>;
 
     /// 读取符号链接的目标路径。
-    async fn readlink(self: Arc<Self>) -> VfsResult<VfsPathBuf>;
+    async fn readlink(self: Arc<Self>) -> VfsResult<PathBuf>;
 }
 
 /// 异步文件句柄 Trait。

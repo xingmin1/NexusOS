@@ -9,7 +9,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{types::{FileMode, Timestamps}, vfs_err_already_exists, vfs_err_invalid_argument, vfs_err_not_dir, vfs_err_not_implemented, AsyncFileSystem, VfsResult};
 use crate::{
-    path::{VfsPath, VfsPathBuf},
+    path::{PathSlice, PathBuf},
     traits::AsyncVnode,
     types::{
         OpenFlags, OsStr, VnodeId, VnodeMetadata, 
@@ -27,7 +27,7 @@ pub enum InMemoryVnodeKindData {
     /// 目录，包含目录项映射表
     Directory(RwLock<alloc::collections::BTreeMap<alloc::string::String, Arc<InMemoryVnode>>>),
     /// 符号链接，包含目标路径
-    SymbolicLink(VfsPathBuf),
+    SymbolicLink(PathBuf),
 }
 
 /// 内存文件系统中的节点
@@ -94,7 +94,7 @@ impl InMemoryVnode {
     pub fn new_symlink(
         fs: Weak<InMemoryFileSystem>,
         id: VnodeId,
-        target: VfsPathBuf,
+        target: PathBuf,
         metadata: VnodeMetadata,
     ) -> Self {
         Self::new(
@@ -298,7 +298,7 @@ impl AsyncVnode for InMemoryVnode {
         }
     }
 
-    async fn readlink(self: Arc<Self>) -> VfsResult<VfsPathBuf> {
+    async fn readlink(self: Arc<Self>) -> VfsResult<PathBuf> {
         match &self.kind {
             InMemoryVnodeKindData::SymbolicLink(target) => Ok(target.clone()),
             _ => Err(crate::vfs_err_invalid_argument!("readlink on non-symlink")),
@@ -369,7 +369,7 @@ impl AsyncVnode for InMemoryVnode {
     async fn symlink_node(
         self: Arc<Self>,
         _name: &OsStr,
-        _target: &VfsPath,
+        _target: &PathSlice,
     ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
         Err(vfs_err_not_implemented!("InMemoryVnode::symlink_node "))
     }

@@ -4,6 +4,8 @@ use alloc::{borrow::Cow, string::ToString};
 use alloc::string::String;
 use core::ops::{Deref, DerefMut};
 
+use crate::PathSlice;
+
 use super::normalize;
 
 /// `String` 包装，始终保持规范化
@@ -24,6 +26,8 @@ impl PathBuf {
 
     /// **内部使用**：跳过校验直接构建
     #[inline] pub(crate) fn from_str_unchecked(s: String) -> Self { Self(s) }
+
+    pub fn to_slice(&self) -> PathSlice { PathSlice::from(self) }
 }
 
 impl core::fmt::Display for PathBuf {

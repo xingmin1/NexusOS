@@ -1,5 +1,7 @@
 #![no_std]
 #![feature(str_as_str)]
+#![feature(async_drop)]
+#![feature(impl_trait_in_assoc_type)]
 
 // 引入 alloc crate，用于动态分配，例如 Vec, String, Box
 extern crate alloc;

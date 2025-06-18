@@ -1,6 +1,6 @@
 //! 借用型路径切片
 
-use alloc::borrow::Cow;
+use alloc::{borrow::Cow, string::ToString};
 use crate::PathBuf;
 
 use super::normalize;
@@ -74,6 +74,10 @@ impl<'a> PathSlice<'a> {
         } else {
             Ok(super::PathBuf::from_str_unchecked(alloc::format!("{}/{}", self.0, comp)))
         }
+    }
+
+    pub fn to_owned_buf(self) -> PathBuf {
+        PathBuf::from_str_unchecked(self.0.to_string())
     }
 }
 

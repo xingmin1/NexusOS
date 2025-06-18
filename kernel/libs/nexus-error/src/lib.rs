@@ -504,3 +504,23 @@ macro_rules! return_errno_with_message {
 }
 
 impl error_stack::Context for Error {}
+
+/// 在字符串(String)中添加当前代码位置信息
+#[macro_export]
+macro_rules! with_pos {
+    ($msg: expr) => {
+        {
+            use alloc::{format, string::ToString};
+            let msg = $msg.to_string();
+            format!("{}:{}:{}: {}", file!(), line!(), column!(), msg)
+        }
+    };
+}
+
+/// 获取当前代码位置信息
+#[macro_export]
+macro_rules! pos {
+    () => {
+        format!("{}:{}:{}", file!(), line!(), column!())
+    };
+}

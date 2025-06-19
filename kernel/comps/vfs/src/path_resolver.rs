@@ -8,7 +8,7 @@
 //! 锁顺序：dcache → vnode
 
 use crate::{
-    cache::DentryCache, path::{PathBuf, PathSlice}, static_dispatch::SVnode, types::VnodeType, verror::{Errno, KernelError, VfsResult}
+    cache::DentryCache, path::{PathBuf, PathSlice}, static_dispatch::vnode::SVnode, types::VnodeType, verror::{Errno, KernelError, VfsResult}
 };
 
 /// 每次 walk 的结果
@@ -93,7 +93,7 @@ impl<'m> PathResolver<'m> {
             let child = if let Some(v) = self.dcache.get(&dir_key, seg).await {
                 v
             } else {
-                let v = current.clone().lookup(seg).await?;
+                let v = current.to_dir().unwrap().lookup(seg).await?;
                 self.dcache.put(dir_key, seg, v.clone()).await;
                 v
             };
@@ -102,7 +102,7 @@ impl<'m> PathResolver<'m> {
             if child.metadata().await?.kind == VnodeType::SymbolicLink
                 && (self.follow_last_symlink || !is_last)
             {
-                let target = child.readlink().await?; // 可能是绝对或相对
+                let target = child.to_symlink().unwrap().readlink().await?; // 可能是绝对或相对
                 // 1. 绝对：直接替换
                 // 2. 相对：基于 path_prefix 构造
                 let mut new_abs = if PathSlice::from(&target).is_absolute() {

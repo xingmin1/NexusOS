@@ -7,7 +7,7 @@ use alloc::{collections::btree_map::BTreeMap as HashMap};
 
 use ostd::sync::RwLock;
 
-use crate::{path::PathBuf, static_dispatch::SVnode, types::VnodeId};
+use crate::{path::PathBuf, static_dispatch::vnode::SVnode, types::VnodeId};
 
 /// Vnode缓存，用于缓存常用的Vnode对象
 ///

@@ -12,7 +12,7 @@ use nexus_error::{error_stack::ResultExt, with_pos};
 use ostd::sync::{Mutex, RwLock};
 
 use crate::{
-    cache::{DentryCache, VnodeCache}, path::{PathBuf, PathSlice}, static_dispatch::{SFileSystem, SProvider}, traits::AsyncBlockDevice, types::{FsOptions, MountId}, verror::{Errno, KernelError, VfsResult}
+    cache::{DentryCache, VnodeCache}, path::{PathBuf, PathSlice}, static_dispatch::{filesystem::SFileSystem, provider::SProvider}, traits::AsyncBlockDevice, types::{FsOptions, MountId}, verror::{Errno, KernelError, VfsResult}
 };
 
 /// **文件系统提供者注册表** —— 写少读多，单锁即可

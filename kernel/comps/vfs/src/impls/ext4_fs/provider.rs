@@ -12,7 +12,7 @@ use crate::types::{FilesystemId, MountId};
 
 pub struct Ext4Provider;
 
-pub fn get_ext4_provider() -> Arc<impl FileSystemProvider> {
+pub fn get_ext4_provider() -> Arc<Ext4Provider> {
     Arc::new(Ext4Provider)
 }
 

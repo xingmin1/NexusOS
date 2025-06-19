@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use ostd::{drivers::virtio::block::get_block_device, sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
 use tracing::info;
 use vfs::{
-    types::{FilesystemId, MountId}, AsyncBlockDevice, AsyncFileSystem, AsyncFileSystemProvider, FsOptions,
+    types::{FilesystemId, MountId}, AsyncBlockDevice, FileSystem, FileSystemProvider, FsOptions,
     VfsResult,
 };
 use virtio_drivers::device::blk::VirtIOBlk;
@@ -16,12 +16,14 @@ use crate::{block_dev::VirtioBlockDevice, filesystem::Ext4Fs};
 
 pub struct Ext4Provider;
 
-pub fn get_ext4_provider() -> Arc<dyn AsyncFileSystemProvider + Send + Sync> {
+pub fn get_ext4_provider() -> Arc<impl FileSystemProvider> {
     Arc::new(Ext4Provider)
 }
 
 #[async_trait]
-impl AsyncFileSystemProvider for Ext4Provider {
+impl FileSystemProvider for Ext4Provider {
+    type FS = Ext4Fs;
+    
     fn fs_type_name(&self) -> &'static str {
         "ext4"
     }
@@ -32,11 +34,11 @@ impl AsyncFileSystemProvider for Ext4Provider {
         options: &FsOptions,
         mount_id: MountId,
         fs_id: FilesystemId,
-    ) -> VfsResult<Arc<dyn AsyncFileSystem + Send + Sync>> {
+    ) -> VfsResult<Arc<Self::FS>> {
         /// 本地 new-type，内部保存任意异步块设备对象
         pub struct Adapt<D: ?Sized + AsyncBlockDevice + Send + Sync>(pub Arc<D>);
 
-        impl<D> another_ext4::BlockDevice for Adapt<D>
+        impl<D> BlockDevice for Adapt<D>
         where
             D: ?Sized + AsyncBlockDevice + Send + Sync + 'static,
         {
@@ -53,7 +55,7 @@ impl AsyncFileSystemProvider for Ext4Provider {
         }
 
         // 若 VFS 层未传入块设备，从 ostd 设备树中获取名为 "block_device"
-        let blk: Arc<dyn another_ext4::BlockDevice> = if let Some(dev) = source_device {
+        let blk: Arc<dyn BlockDevice> = if let Some(dev) = source_device {
             Arc::new(Adapt(dev))
         } else {
             let vblk: Arc<Mutex<VirtIOBlk<_, _>>> = get_block_device("block_device")

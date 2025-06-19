@@ -14,20 +14,20 @@ use ostd::sync::{Mutex, RwLock};
 use crate::{
     cache::{DentryCache, VnodeCache},
     path::{PathBuf, PathSlice},
-    traits::{AsyncBlockDevice, AsyncFileSystem, AsyncFileSystemProvider},
+    traits::{AsyncBlockDevice, FileSystem, FileSystemProvider},
     types::{FsOptions, MountId},
     verror::{Errno, KernelError, VfsResult},
 };
 
 /// **文件系统提供者注册表** —— 写少读多，单锁即可
 struct ProviderRegistry {
-    inner: RwLock<Map<AString, Arc<dyn AsyncFileSystemProvider + Send + Sync>>>,
+    inner: RwLock<Map<AString, Arc<dyn FileSystemProvider + Send + Sync>>>,
 }
 impl ProviderRegistry {
-    fn new(initial: Map<AString, Arc<dyn AsyncFileSystemProvider + Send + Sync>>) -> Self {
+    fn new(initial: Map<AString, Arc<dyn FileSystemProvider + Send + Sync>>) -> Self {
         Self { inner: RwLock::new(initial) }
     }
-    async fn get(&self, ty: &str) -> Option<Arc<dyn AsyncFileSystemProvider + Send + Sync>> {
+    async fn get(&self, ty: &str) -> Option<Arc<dyn FileSystemProvider + Send + Sync>> {
         self.inner.read().await.get(ty).cloned()
     }
 }
@@ -36,7 +36,7 @@ impl ProviderRegistry {
 #[derive(Clone)]
 pub struct MountInfo {
     pub id: MountId,
-    pub fs: Arc<dyn AsyncFileSystem + Send + Sync>,
+    pub fs: Arc<dyn FileSystem + Send + Sync>,
 }
 
 /// **挂载点注册表** —— 需要最长前缀匹配
@@ -178,12 +178,12 @@ impl VfsManager {
 
 #[derive(Default)]
 pub struct VfsManagerBuilder {
-    providers: Map<AString, Arc<dyn AsyncFileSystemProvider + Send + Sync>>,
+    providers: Map<AString, Arc<dyn FileSystemProvider + Send + Sync>>,
     vnode_cap: usize,
     dentry_cap: usize,
 }
 impl VfsManagerBuilder {
-    pub fn provider(mut self, p: Arc<dyn AsyncFileSystemProvider + Send + Sync>) -> Self {
+    pub fn provider(mut self, p: Arc<dyn FileSystemProvider + Send + Sync>) -> Self {
         self.providers.insert(p.fs_type_name().into(), p); self
     }
     pub fn vnode_cache(mut self, cap: usize) -> Self { self.vnode_cap = cap; self }

@@ -2,9 +2,9 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use async_trait::async_trait;
 
-use crate::{types::FileMode, AsyncBlockDevice, AsyncFileSystem, VfsResult};
+use crate::{types::FileMode, AsyncBlockDevice, FileSystem, VfsResult};
 use crate::{
-    traits::AsyncFileSystemProvider,
+    traits::FileSystemProvider,
     types::{FilesystemId, FsOptions, MountId, VnodeMetadata, VnodeType, Timestamps},
 };
 
@@ -22,7 +22,7 @@ impl InMemoryFsProvider {
 }
 
 #[async_trait]
-impl AsyncFileSystemProvider for InMemoryFsProvider {
+impl FileSystemProvider for InMemoryFsProvider {
     /// 获取文件系统类型名称
     fn fs_type_name(&self) -> &'static str {
         "inmemoryfs"
@@ -35,7 +35,7 @@ impl AsyncFileSystemProvider for InMemoryFsProvider {
         options: &FsOptions,
         mount_id: MountId,
         fs_id: FilesystemId,
-    ) -> VfsResult<Arc<dyn AsyncFileSystem + Send + Sync>> {
+    ) -> VfsResult<Arc<dyn FileSystem + Send + Sync>> {
         // 创建一个新的内存文件系统实例
         let fs = Arc::new(InMemoryFileSystem::new(fs_id, mount_id, options.clone()));
         
@@ -64,6 +64,6 @@ impl AsyncFileSystemProvider for InMemoryFsProvider {
         // 初始化文件系统的根节点
         fs.init_root_node(root_node).await?;
         
-        Ok(fs as Arc<dyn AsyncFileSystem + Send + Sync>)
+        Ok(fs as Arc<dyn FileSystem + Send + Sync>)
     }
 }

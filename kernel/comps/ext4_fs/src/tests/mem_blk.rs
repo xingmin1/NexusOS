@@ -14,7 +14,7 @@ use tracing::{debug, info, trace};
 
 use crate::{get_ext4_provider, tests::block_on};
 use vfs::{
-    types::FileMode, AsyncBlockDevice, AsyncFileSystemProvider, DirectoryEntry, OpenFlags,
+    types::FileMode, AsyncBlockDevice, FileSystemProvider, DirectoryEntry, OpenFlags,
     VfsManager, VfsManagerBuilder, VfsResult, VnodeType,
 };
 
@@ -100,7 +100,7 @@ impl AsyncBlockDevice for MemBlockDev {
 /// 返回已挂载的 VFS 管理器与根 vnode。
 struct TestCtx {
     vfs: Arc<VfsManager>,
-    root: Arc<dyn vfs::AsyncVnode + Send + Sync>,
+    root: Arc<dyn vfs::Vnode + Send + Sync>,
 }
 
 impl TestCtx {

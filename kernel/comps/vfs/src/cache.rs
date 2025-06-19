@@ -7,7 +7,7 @@ use alloc::{collections::btree_map::BTreeMap as HashMap, sync::Arc};
 
 use ostd::sync::RwLock;
 
-use crate::{path::PathBuf, traits::AsyncVnode, types::VnodeId};
+use crate::{path::PathBuf, traits::Vnode, types::VnodeId};
 
 /// Vnode缓存，用于缓存常用的Vnode对象
 ///
@@ -15,7 +15,7 @@ use crate::{path::PathBuf, traits::AsyncVnode, types::VnodeId};
 /// 提高文件系统访问性能。
 pub struct VnodeCache {
     // 使用RwLock保护内部缓存，允许多读单写并发访问
-    cache: RwLock<HashMap<VnodeId, Arc<dyn AsyncVnode + Send + Sync>>>,
+    cache: RwLock<HashMap<VnodeId, Arc<dyn Vnode + Send + Sync>>>,
     capacity: usize, // 缓存容量上限
 }
 
@@ -38,7 +38,7 @@ impl VnodeCache {
     ///
     /// # 返回
     /// 如果找到，返回指向缓存Vnode的Arc指针；否则返回None
-    pub async fn get(&self, vnode_id: VnodeId) -> Option<Arc<dyn AsyncVnode + Send + Sync>> {
+    pub async fn get(&self, vnode_id: VnodeId) -> Option<Arc<dyn Vnode + Send + Sync>> {
         // 尝试从缓存中读取
         let cache = self.cache.read().await;
         cache.get(&vnode_id).cloned()
@@ -53,8 +53,8 @@ impl VnodeCache {
     /// 如果添加成功，返回克隆的Arc指针；否则返回原始Arc（未添加）
     pub async fn put(
         &self,
-        vnode: Arc<dyn AsyncVnode + Send + Sync>,
-    ) -> Arc<dyn AsyncVnode + Send + Sync> {
+        vnode: Arc<dyn Vnode + Send + Sync>,
+    ) -> Arc<dyn Vnode + Send + Sync> {
         let vnode_id = vnode.id();
         let mut cache = self.cache.write().await;
 
@@ -89,7 +89,7 @@ impl VnodeCache {
 /// 这个缓存可以加速路径解析过程，避免重复的目录查找操作。
 pub struct DentryCache {
     // 键是目录路径和文件名的组合，值是对应的Vnode
-    cache: RwLock<HashMap<(PathBuf, AllocString), Arc<dyn AsyncVnode + Send + Sync>>>,
+    cache: RwLock<HashMap<(PathBuf, AllocString), Arc<dyn Vnode + Send + Sync>>>,
     capacity: usize, // 缓存容量上限
 }
 
@@ -119,7 +119,7 @@ impl DentryCache {
         &self,
         dir_path: &PathBuf,
         name: &str,
-    ) -> Option<Arc<dyn AsyncVnode + Send + Sync>> {
+    ) -> Option<Arc<dyn Vnode + Send + Sync>> {
         let cache = self.cache.read().await;
         cache
             .get(&(dir_path.clone(), AllocString::from(name)))
@@ -136,7 +136,7 @@ impl DentryCache {
         &self,
         dir_path: PathBuf,
         name: &str,
-        vnode: Arc<dyn AsyncVnode + Send + Sync>,
+        vnode: Arc<dyn Vnode + Send + Sync>,
     ) {
         let mut cache = self.cache.write().await;
 

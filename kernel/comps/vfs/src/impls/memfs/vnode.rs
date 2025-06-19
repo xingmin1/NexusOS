@@ -7,10 +7,10 @@ use async_trait::async_trait;
 use ostd::sync::RwLock;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{types::{FileMode, Timestamps}, vfs_err_already_exists, vfs_err_invalid_argument, vfs_err_not_dir, vfs_err_not_implemented, AsyncFileSystem, VfsResult};
+use crate::{types::{FileMode, Timestamps}, vfs_err_already_exists, vfs_err_invalid_argument, vfs_err_not_dir, vfs_err_not_implemented, FileSystem, VfsResult};
 use crate::{
     path::{PathSlice, PathBuf},
-    traits::AsyncVnode,
+    traits::Vnode,
     types::{
         OpenFlags, OsStr, VnodeId, VnodeMetadata, 
         VnodeMetadataChanges, VnodeType
@@ -125,12 +125,12 @@ impl InMemoryVnode {
 }
 
 #[async_trait]
-impl AsyncVnode for InMemoryVnode {
+impl Vnode for InMemoryVnode {
     fn id(&self) -> VnodeId {
         self.id
     }
     
-    fn filesystem(&self) -> Arc<dyn crate::traits::AsyncFileSystem + Send + Sync> {
+    fn filesystem(&self) -> Arc<dyn crate::traits::FileSystem + Send + Sync> {
         self.fs.upgrade().unwrap()
     }
     
@@ -163,14 +163,14 @@ impl AsyncVnode for InMemoryVnode {
         Ok(())
     }
     
-    async fn lookup(self: Arc<Self>, name: &OsStr) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    async fn lookup(self: Arc<Self>, name: &OsStr) -> VfsResult<Arc<dyn Vnode + Send + Sync>> {
         let entry_name = name.as_str();
         match &self.kind {
             InMemoryVnodeKindData::Directory(entries) => {
                 let guard = entries.read().await;
                 guard.get(entry_name).cloned().ok_or_else(|| {
                     crate::vfs_err_not_found!(format!("Entry '{}' not found in dir {}", entry_name, self.id))
-                }).map(|v| v as Arc<dyn AsyncVnode + Send + Sync>)
+                }).map(|v| v as Arc<dyn Vnode + Send + Sync>)
             }
             _ => Err(crate::vfs_err_not_dir!(format!("Vnode {} is not directory", self.id))),
         }
@@ -182,7 +182,7 @@ impl AsyncVnode for InMemoryVnode {
         kind: VnodeType,
         permissions: FileMode,
         _rdev: Option<u64>,
-    ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    ) -> VfsResult<Arc<dyn Vnode + Send + Sync>> {
         let filename = name.as_str();
         let InMemoryVnodeKindData::Directory(entries) = &self.kind else {
             return Err(crate::vfs_err_not_dir!("create_node on non-directory"));
@@ -212,7 +212,7 @@ impl AsyncVnode for InMemoryVnode {
             _ => return Err(crate::vfs_err_not_implemented!("unsupported vnode type in memfs create_node")),
         };
         guard.insert(filename.to_string(), new_node.clone());
-        Ok(new_node as Arc<dyn AsyncVnode + Send + Sync>)
+        Ok(new_node as Arc<dyn Vnode + Send + Sync>)
     }
     
     async fn unlink(self: Arc<Self>, name: &OsStr) -> VfsResult<()> {
@@ -258,7 +258,7 @@ impl AsyncVnode for InMemoryVnode {
     async fn rename(
         self: Arc<Self>,
         _old_name: &OsStr,
-        _new_parent: Arc<dyn AsyncVnode + Send + Sync>,
+        _new_parent: Arc<dyn Vnode + Send + Sync>,
         _new_name: &OsStr,
     ) -> VfsResult<()> {
         Err(vfs_err_not_implemented!("InMemoryVnode::rename "))
@@ -309,7 +309,7 @@ impl AsyncVnode for InMemoryVnode {
         self: Arc<Self>,
         name: &OsStr,
         permissions: FileMode,
-    ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    ) -> VfsResult<Arc<dyn Vnode + Send + Sync>> {
         use crate::types::VnodeType;
         use crate::vfs_err_already_exists;
 
@@ -363,14 +363,14 @@ impl AsyncVnode for InMemoryVnode {
         // 注意：这里简化处理，实际应该更新 mtime 和 ctime
         
         // 8. 返回新创建的目录节点
-        Ok(new_dir as Arc<dyn AsyncVnode + Send + Sync>)
+        Ok(new_dir as Arc<dyn Vnode + Send + Sync>)
     }
     
     async fn symlink_node(
         self: Arc<Self>,
         _name: &OsStr,
         _target: &PathSlice,
-    ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    ) -> VfsResult<Arc<dyn Vnode + Send + Sync>> {
         Err(vfs_err_not_implemented!("InMemoryVnode::symlink_node "))
     }
 

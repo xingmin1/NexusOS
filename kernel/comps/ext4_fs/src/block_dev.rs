@@ -1,12 +1,10 @@
 //! 将 VirtIOBlk 封装为 VFS 与 another_ext4 都能使用的块设备。
 
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use another_ext4::{Block, BlockDevice};
 use async_trait::async_trait;
 use ostd::{sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
-use tracing::debug;
 use vfs::{AsyncBlockDevice, VfsResult};
 use virtio_drivers::device::blk::VirtIOBlk;
 

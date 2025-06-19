@@ -8,7 +8,7 @@ use ostd::sync::RwLock;
 
 use crate::{vfs_err_not_implemented, VfsResult};
 use crate::{
-    traits::{AsyncDirHandle, AsyncFileHandle, AsyncVnode},
+    traits::{AsyncDirHandle, AsyncFileHandle, Vnode},
     types::{DirectoryEntry, OpenFlags, SeekFrom},
 };
 
@@ -112,8 +112,8 @@ impl AsyncFileHandle for InMemoryFileHandle {
         Ok(())
     }
 
-    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> {
-        self.vnode.clone() as Arc<dyn AsyncVnode + Send + Sync>
+    fn vnode(&self) -> Arc<dyn Vnode + Send + Sync> {
+        self.vnode.clone() as Arc<dyn Vnode + Send + Sync>
     }
 
     async fn close(&self) -> VfsResult<()> {
@@ -171,7 +171,7 @@ impl AsyncDirHandle for InMemoryDirHandle {
         Ok(())
     }
 
-    fn vnode(&self) -> Arc<dyn AsyncVnode + Send + Sync> {
-        self.vnode.clone() as Arc<dyn AsyncVnode + Send + Sync>
+    fn vnode(&self) -> Arc<dyn Vnode + Send + Sync> {
+        self.vnode.clone() as Arc<dyn Vnode + Send + Sync>
     }
 }

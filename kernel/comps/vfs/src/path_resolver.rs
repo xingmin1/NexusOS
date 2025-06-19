@@ -12,7 +12,7 @@ use alloc::sync::Arc;
 use crate::{
     cache::DentryCache,
     path::{PathBuf, PathSlice},
-    traits::AsyncVnode,
+    traits::Vnode,
     types::VnodeType,
     verror::{Errno, KernelError, VfsResult},
 };
@@ -20,7 +20,7 @@ use crate::{
 /// 每次 walk 的结果
 enum Step {
     /// 到达最终 Vnode
-    Done(Arc<dyn AsyncVnode + Send + Sync>),
+    Done(Arc<dyn Vnode + Send + Sync>),
     /// 解析过程中遇到符号链接，需要以新绝对路径重启
     Restart(PathBuf),
 }
@@ -50,7 +50,7 @@ impl<'m> PathResolver<'m> {
     pub async fn resolve(
         &self,
         abs_raw: &str,
-    ) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    ) -> VfsResult<Arc<dyn Vnode + Send + Sync>> {
         // 预规范化
         let mut todo = PathBuf::new(abs_raw)?;
         if !PathSlice::from(&todo).is_absolute() {

@@ -44,6 +44,8 @@ pub trait FileSystem: Send + Sync + 'static {
     async fn sync(&self) -> VfsResult<()>;
     async fn prepare_unmount(&self) -> VfsResult<()>;
     async fn reclaim_vnode(&self, id: VnodeId) -> VfsResult<bool>;
+    fn fs_type_name(&self) -> &'static str;
+    fn is_readonly(&self) -> bool;
 }
 
 /// Vnode —— 最小公共能力
@@ -56,10 +58,10 @@ pub trait Vnode: Send + Sync + 'static {
     async fn metadata(&self) -> VfsResult<VnodeMetadata>;
     async fn set_metadata(&self, ch: VnodeMetadataChanges) -> VfsResult<()>;
 
-    /* ---------- 可选能力检测 ---------- */
-    /// 运行时判断该节点是否实现扩展能力（读写/目录/链接）。  
-    fn has<T: ?Sized + VnodeCapability>(&self) -> bool
-    where Arc<Self>: Into<Arc<T>> { T::is_capable(self) }
+    // /* ---------- 可选能力检测 ---------- */
+    // /// 运行时判断该节点是否实现扩展能力（读写/目录/链接）。  
+    // fn has<T: ?Sized + VnodeCapability>(&self) -> bool
+    // where Arc<Self>: Into<Arc<T>> { T::is_capable(self) }
 }
 
 /// 扩展能力 Trait
@@ -68,10 +70,10 @@ pub trait VnodeCapability: Send + Sync + 'static {
     type FS: FileSystem<Vnode = Self::Vnode>;
     type Vnode: Vnode<FS = Self::FS>;
 
-    fn is_capable(node: &dyn Vnode<FS = Self::FS>) -> bool {
-        // 默认：无法转换
-        false
-    }
+    // fn is_capable(node: &dyn Vnode<FS = Self::FS>) -> bool {
+    //     // 默认：无法转换
+    //     false
+    // }
 }
 
 /// 读写文件能力
@@ -79,7 +81,7 @@ pub trait FileCap: VnodeCapability {
     /// 打开文件后产生的句柄类型
     type Handle: FileHandle<Vnode = Self>;
 
-    async fn open(&self, flags: FileOpen) -> VfsResult<Arc<Self::Handle>>;
+    async fn open(self: Arc<Self>, flags: FileOpen) -> VfsResult<Arc<Self::Handle>>;
 }
 
 /// 文件句柄接口
@@ -107,7 +109,7 @@ pub trait FileHandle: Send + Sync + 'static {
 pub trait DirCap: VnodeCapability {
     type DirHandle: DirHandle<Vnode = Self>;
 
-    async fn open_dir(&self) -> VfsResult<Arc<Self::DirHandle>>;
+    async fn open_dir(self: Arc<Self>) -> VfsResult<Arc<Self::DirHandle>>;
     async fn lookup(&self, name: &OsStr) -> VfsResult<Arc<Self>>;
     async fn create(
         &self,

@@ -1,15 +1,14 @@
-//! Ext4Fs ‑ VFS::AsyncFileSystem 的实现，内部委托给 another_ext4。
+//! Ext4Fs ‑ VFS::FileSystem 的实现，内部委托给 another_ext4。
 
-use alloc::{sync::Arc, boxed::Box};
-use async_trait::async_trait;
+use alloc::sync::Arc;
 use ostd::sync::Mutex;
 
-use another_ext4::{self as ext4, BlockDevice};
-use vfs::{
-    types::{FilesystemId, MountId}, vfs_err_unsupported, AsyncFileSystem, AsyncVnode, FilesystemStats, FsOptions, VfsResult
-};
-
 use crate::vnode::Ext4Vnode;
+use another_ext4::{self as ext4, BlockDevice};
+use vfs::types::VnodeId;
+use vfs::{
+    types::{FilesystemId, MountId}, vfs_err_unsupported, FileSystem, FilesystemStats, FsOptions, VfsResult
+};
 
 pub struct Ext4Fs {
     mount_id: u64,
@@ -25,26 +24,22 @@ impl Ext4Fs {
         Self { mount_id, fs_id, options, block, inner: Mutex::new(inner) }
     }
 
-    pub fn root_vnode_arc(self: &Arc<Self>) -> Arc<dyn AsyncVnode + Send + Sync> {
-        Ext4Vnode::new_root(self.clone())
+    pub fn root_vnode_arc(self: &Arc<Self>) -> Arc<Ext4Vnode> {
+        Ext4Vnode::new_root(self)
     }
 }
 
-/* ---------- AsyncFileSystem ---------- */
-
-#[async_trait]
-impl AsyncFileSystem for Ext4Fs {
+/* ---------- FileSystem ---------- */
+impl FileSystem for Ext4Fs {
+    type Vnode = Ext4Vnode;
+    
     fn id(&self) -> FilesystemId { self.fs_id as FilesystemId }
 
     fn mount_id(&self) -> MountId { self.mount_id as MountId }
 
-    fn fs_type_name(&self) -> &'static str { "ext4" }
-
     fn options(&self) -> &FsOptions { &self.options }
 
-    fn is_readonly(&self) -> bool { self.options.read_only }
-
-    async fn root_vnode(self: Arc<Self>) -> VfsResult<Arc<dyn AsyncVnode + Send + Sync>> {
+    async fn root_vnode(self: Arc<Self>) -> VfsResult<Arc<Self::Vnode>> {
         Ok(self.root_vnode_arc())
     }
 
@@ -71,12 +66,15 @@ impl AsyncFileSystem for Ext4Fs {
         Ok(())
     }
 
-    async fn unmount_prepare(&self) -> VfsResult<()> {
+    async fn prepare_unmount(&self) -> VfsResult<()> {
         self.sync().await
     }
 
-    async fn gc_vnode(&self, _vnode_id: u64) -> VfsResult<bool> {
-        // ext4 有内部缓存，示例直接返回 true 表示 GC 成功
+    async fn reclaim_vnode(&self, _id: VnodeId) -> VfsResult<bool> {
         Ok(true)
     }
+
+    fn fs_type_name(&self) -> &'static str { "ext4" }
+
+    fn is_readonly(&self) -> bool { self.options.read_only }
 }

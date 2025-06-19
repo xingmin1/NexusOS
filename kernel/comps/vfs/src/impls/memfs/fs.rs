@@ -6,7 +6,7 @@ use ostd::sync::RwLock;
 
 use crate::{vfs_err_not_implemented, VfsResult};
 use crate::{
-    traits::AsyncFileSystem,
+    traits::FileSystem,
     types::{FilesystemId, FilesystemStats, FsOptions, MountId, VnodeId},
 };
 
@@ -45,7 +45,7 @@ impl InMemoryFileSystem {
 }
 
 #[async_trait]
-impl AsyncFileSystem for InMemoryFileSystem {
+impl FileSystem for InMemoryFileSystem {
     /// 获取文件系统类型名称
     fn fs_type_name(&self) -> &'static str {
         "inmemoryfs"
@@ -72,9 +72,9 @@ impl AsyncFileSystem for InMemoryFileSystem {
     }
 
     /// 获取根节点
-    async fn root_vnode(&self) -> VfsResult<Arc<dyn crate::traits::AsyncVnode + Send + Sync>> {
+    async fn root_vnode(&self) -> VfsResult<Arc<dyn crate::traits::Vnode + Send + Sync>> {
         if let Some(root) = self.root.read().await.as_ref() {
-            Ok(root.clone() as Arc<dyn crate::traits::AsyncVnode + Send + Sync>)
+            Ok(root.clone() as Arc<dyn crate::traits::Vnode + Send + Sync>)
         } else {
             Err(vfs_err_not_implemented!("InMemoryFileSystem::root_vnode - 根节点未初始化"))
         }

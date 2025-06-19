@@ -27,7 +27,7 @@ use ostd::task::{scheduler, scheduler::spawn, yield_now};
 use tracing::{debug, error, info};
 
 use crate::get_ext4_provider;
-use vfs::{types::{FileMode, VnodeType}, AccessMode, AsyncFileSystemProvider, FileOpen, OpenStatus, VfsManagerBuilder, VfsResult};
+use vfs::{types::{FileMode, VnodeType}, AccessMode, FileSystemProvider, FileOpen, OpenStatus, VfsManagerBuilder, VfsResult};
 
 const RW: usize = 2;
 const R: usize = 0;
@@ -37,7 +37,7 @@ const W: usize = 1;
 /// 业务逻辑放在单个 async 任务里，便于与调度器对接
 async fn test_basic() -> VfsResult<()> {
     // --- 1. 挂载 ---
-    let provider: Arc<dyn AsyncFileSystemProvider + Send + Sync> = get_ext4_provider();
+    let provider: Arc<dyn FileSystemProvider + Send + Sync> = get_ext4_provider();
     let mut vfs_manager = VfsManager::builder().provider(provider).build();
     vfs_manager.mount(None, "/", "ext4", Default::default())
         .await
@@ -58,6 +58,7 @@ async fn test_basic() -> VfsResult<()> {
 
     // --- 3. create file & write ---
     let fnode_handle = root_vnode
+    .open_dir_handle()
         .open(
             "hello.txt".as_ref(),
             FileOpen::new(2 | OpenStatus::CREATE.bits()).change_context_lazy(|| KernelError::new(Errno::EINVAL))?,

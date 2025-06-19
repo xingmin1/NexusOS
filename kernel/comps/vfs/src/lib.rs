@@ -48,6 +48,8 @@ pub mod manager;
 /// 实现路径解析的核心逻辑，被VfsManager使用。
 mod path_resolver;
 
+pub mod static_dispatch;
+
 /// 文件系统具体实现模块。
 ///
 /// 包含不同文件系统的实现，如内存文件系统等。
@@ -59,7 +61,7 @@ mod path_resolver;
 
 // 从各个模块中导出常用类型，方便使用
 pub use path::{PathSlice, PathBuf};
-pub use traits::{AsyncFileSystem, AsyncVnode, AsyncFileHandle, AsyncDirHandle, AsyncFileSystemProvider, AsyncBlockDevice};
+pub use traits::{FileSystem, Vnode, AsyncFileHandle, AsyncDirHandle, FileSystemProvider, AsyncBlockDevice};
 pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode};
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};

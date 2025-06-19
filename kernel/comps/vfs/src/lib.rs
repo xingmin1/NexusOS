@@ -61,7 +61,7 @@ pub mod impls;
 
 // 从各个模块中导出常用类型，方便使用
 pub use path::{PathSlice, PathBuf};
-pub use traits::{FileSystem, Vnode, AsyncFileHandle, AsyncDirHandle, FileSystemProvider, AsyncBlockDevice};
+pub use traits::{FileSystem, Vnode, FileHandle, DirHandle, FileSystemProvider, AsyncBlockDevice};
 pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode};
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};

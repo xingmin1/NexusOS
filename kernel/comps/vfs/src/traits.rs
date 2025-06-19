@@ -26,7 +26,7 @@ pub trait FileSystemProvider: Send + Sync + 'static {
 
     async fn mount(
         &self,
-        dev: Option<Arc<dyn AsyncBlockDevice>>,
+        dev: Option<Arc<dyn AsyncBlockDevice + Send + Sync>>,
         opts: &FsOptions,
         mount_id: MountId,
         fs_id: FilesystemId,
@@ -60,6 +60,8 @@ pub trait Vnode: Send + Sync + 'static {
     async fn metadata(&self) -> VfsResult<VnodeMetadata>;
     async fn set_metadata(&self, ch: VnodeMetadataChanges) -> VfsResult<()>;
 
+    fn cap_type(&self) -> VnodeType;
+
     // /* ---------- 可选能力检测 ---------- */
     // /// 运行时判断该节点是否实现扩展能力（读写/目录/链接）。  
     // fn has<T: ?Sized + VnodeCapability>(&self) -> bool
@@ -91,7 +93,7 @@ pub trait FileHandle: Send + Sync + 'static {
     type Vnode: Vnode;
 
     fn flags(&self) -> FileOpen;
-    fn vnode(&self) -> &Self::Vnode;
+    fn vnode(&self) -> &Arc<Self::Vnode>;
 
     async fn read_at(&self, off: u64, buf: &mut [u8]) -> VfsResult<usize>;
     async fn write_at(&self, off: u64, buf: &[u8]) -> VfsResult<usize>;
@@ -132,7 +134,7 @@ pub trait DirCap: VnodeCapability {
 pub trait DirHandle: Send + Sync + 'static {
     type Vnode: Vnode;
 
-    fn vnode(&self) -> &Self::Vnode;
+    fn vnode(&self) -> &Arc<Self::Vnode>;
 
     /// 读取最多 `buf.len()` 条目录项，返回实际写入条目数  
     async fn read_dir_chunk(&self, buf: &mut [DirectoryEntry]) -> VfsResult<usize>;

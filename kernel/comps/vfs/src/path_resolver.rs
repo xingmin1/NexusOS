@@ -7,20 +7,14 @@
 //! 性能：单次遍历 O(|path|)；遇到 n 个链接最多循环 n+1 次。
 //! 锁顺序：dcache → vnode
 
-use alloc::sync::Arc;
-
 use crate::{
-    cache::DentryCache,
-    path::{PathBuf, PathSlice},
-    traits::Vnode,
-    types::VnodeType,
-    verror::{Errno, KernelError, VfsResult},
+    cache::DentryCache, path::{PathBuf, PathSlice}, static_dispatch::SVnode, types::VnodeType, verror::{Errno, KernelError, VfsResult}
 };
 
 /// 每次 walk 的结果
 enum Step {
     /// 到达最终 Vnode
-    Done(Arc<dyn Vnode + Send + Sync>),
+    Done(SVnode),
     /// 解析过程中遇到符号链接，需要以新绝对路径重启
     Restart(PathBuf),
 }
@@ -50,7 +44,7 @@ impl<'m> PathResolver<'m> {
     pub async fn resolve(
         &self,
         abs_raw: &str,
-    ) -> VfsResult<Arc<dyn Vnode + Send + Sync>> {
+    ) -> VfsResult<SVnode> {
         // 预规范化
         let mut todo = PathBuf::new(abs_raw)?;
         if !PathSlice::from(&todo).is_absolute() {

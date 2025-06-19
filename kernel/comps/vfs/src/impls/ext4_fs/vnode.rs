@@ -72,6 +72,11 @@ impl Ext4Vnode {
     fn as_fs(&self) -> &Ext4Fs {
         &self.fs
     }
+
+    /// 返回节点类型，避免在静态派发转换时额外查询元数据。
+    pub fn kind(&self) -> VnodeType {
+        self.kind
+    }
 }
 
 /* ---------- Vnode ---------- */
@@ -119,6 +124,10 @@ impl Vnode for Ext4Vnode {
             .map_err(map_err)?;
         Ok(())
     }
+
+    fn cap_type(&self) -> VnodeType {
+        self.kind
+    }
 }
 
 /* ---------- 文件句柄 ---------- */
@@ -137,7 +146,7 @@ impl FileHandle for Ext4FileHandle {
         self.flags
     }
 
-    fn vnode(&self) -> &Self::Vnode {
+    fn vnode(&self) -> &Arc<Self::Vnode> {
         &self.vnode
     }
 
@@ -237,7 +246,7 @@ pub struct Ext4DirHandle {
 impl DirHandle for Ext4DirHandle {
     type Vnode = Ext4Vnode;
 
-    fn vnode(&self) -> &Self::Vnode {
+    fn vnode(&self) -> &Arc<Self::Vnode> {
         &self.vnode
     }
 
@@ -374,5 +383,15 @@ impl DirCap for Ext4Vnode {
             .await
             .rename(self.inode, old_name, new_parent.id() as u32, new_name)
             .map_err(map_err)
+    }
+}
+
+/* ---------- 符号链接能力 ---------- */
+use crate::traits::SymlinkCap;
+
+impl SymlinkCap for Ext4Vnode {
+    async fn readlink(&self) -> VfsResult<crate::path::PathBuf> {
+        // another_ext4 当前未实现读取符号链接，故返回未支持错误。
+        Err(vfs_err_unsupported!("ext4: readlink not supported"))
     }
 }

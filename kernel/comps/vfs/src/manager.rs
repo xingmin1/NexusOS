@@ -12,22 +12,18 @@ use nexus_error::{error_stack::ResultExt, with_pos};
 use ostd::sync::{Mutex, RwLock};
 
 use crate::{
-    cache::{DentryCache, VnodeCache},
-    path::{PathBuf, PathSlice},
-    traits::{AsyncBlockDevice, FileSystem, FileSystemProvider},
-    types::{FsOptions, MountId},
-    verror::{Errno, KernelError, VfsResult},
+    cache::{DentryCache, VnodeCache}, path::{PathBuf, PathSlice}, static_dispatch::{SFileSystem, SProvider}, traits::AsyncBlockDevice, types::{FsOptions, MountId}, verror::{Errno, KernelError, VfsResult}
 };
 
 /// **文件系统提供者注册表** —— 写少读多，单锁即可
 struct ProviderRegistry {
-    inner: RwLock<Map<AString, Arc<dyn FileSystemProvider + Send + Sync>>>,
+    inner: RwLock<Map<AString, SProvider>>,
 }
 impl ProviderRegistry {
-    fn new(initial: Map<AString, Arc<dyn FileSystemProvider + Send + Sync>>) -> Self {
+    fn new(initial: Map<AString, SProvider>) -> Self {
         Self { inner: RwLock::new(initial) }
     }
-    async fn get(&self, ty: &str) -> Option<Arc<dyn FileSystemProvider + Send + Sync>> {
+    async fn get(&self, ty: &str) -> Option<SProvider> {
         self.inner.read().await.get(ty).cloned()
     }
 }
@@ -36,7 +32,7 @@ impl ProviderRegistry {
 #[derive(Clone)]
 pub struct MountInfo {
     pub id: MountId,
-    pub fs: Arc<dyn FileSystem + Send + Sync>,
+    pub fs: SFileSystem,
 }
 
 /// **挂载点注册表** —— 需要最长前缀匹配
@@ -160,7 +156,7 @@ impl VfsManager {
         let (_, info) = self.mounts.remove_by_id(id)
             .await
             .ok_or_else(|| KernelError::with_message(Errno::EINVAL, "mount id invalid"))?;
-        info.fs.unmount_prepare().await?;
+        info.fs.prepare_unmount().await?;
         self.mount_id_pool.free(id).await;
         self.fs_id_pool.free(info.fs.id()).await;
         Ok(())
@@ -178,12 +174,12 @@ impl VfsManager {
 
 #[derive(Default)]
 pub struct VfsManagerBuilder {
-    providers: Map<AString, Arc<dyn FileSystemProvider + Send + Sync>>,
+    providers: Map<AString, SProvider>,
     vnode_cap: usize,
     dentry_cap: usize,
 }
 impl VfsManagerBuilder {
-    pub fn provider(mut self, p: Arc<dyn FileSystemProvider + Send + Sync>) -> Self {
+    pub fn provider(mut self, p: SProvider) -> Self {
         self.providers.insert(p.fs_type_name().into(), p); self
     }
     pub fn vnode_cache(mut self, cap: usize) -> Self { self.vnode_cap = cap; self }

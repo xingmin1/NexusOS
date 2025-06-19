@@ -25,7 +25,7 @@ impl FileSystemProvider for Ext4Provider {
 
     async fn mount(
         &self,
-        source_device: Option<Arc<dyn AsyncBlockDevice>>,
+        source_device: Option<Arc<dyn AsyncBlockDevice + Send + Sync>>,
         options: &FsOptions,
         mount_id: MountId,
         fs_id: FilesystemId,

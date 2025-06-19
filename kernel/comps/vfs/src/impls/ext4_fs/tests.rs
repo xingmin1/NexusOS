@@ -1,11 +1,11 @@
 // mod mem_blk;
 
 use nexus_error::Errno;
-use ostd::task::scheduler::blocking_future::BlockingFuture;
+// use ostd::task::scheduler::blocking_future::BlockingFuture;
 
-fn block_on<F: core::future::Future>(f: F) -> F::Output {
-    f.block()
-}
+// fn block_on<F: core::future::Future>(f: F) -> F::Output {
+//     f.block()
+// }
 
 // kernel/comps/ext4_fs/src/tests.rs
 //
@@ -17,52 +17,52 @@ fn block_on<F: core::future::Future>(f: F) -> F::Output {
 
 extern crate alloc;
 
-use alloc::{format, sync::Arc, vec::Vec};
+use alloc::{format, sync::Arc};
+use crate::impls::ext4_fs::get_ext4_provider;
+use crate::static_dispatch::provider::SProvider;
+use crate::types::FileMode;
 use crate::verror::KernelError;
-use crate::VfsManager;
+use crate::{FileOpen, OpenStatus, VfsManager, VfsResult, VnodeType};
 use core::sync::atomic::{AtomicBool, Ordering};
 use nexus_error::error_stack::ResultExt;
 use ostd::prelude::ktest;
-use ostd::task::{scheduler, scheduler::spawn, yield_now};
+use ostd::task::{scheduler, scheduler::spawn};
 use tracing::{debug, error, info};
-
-use crate::get_ext4_provider;
-
-const RW: usize = 2;
-const R: usize = 0;
-const W: usize = 1;
 
 
 /// 业务逻辑放在单个 async 任务里，便于与调度器对接
 async fn test_basic() -> VfsResult<()> {
     // --- 1. 挂载 ---
-    let provider: Arc<dyn FileSystemProvider + Send + Sync> = get_ext4_provider();
-    let mut vfs_manager = VfsManager::builder().provider(provider).build();
+    let provider: SProvider = get_ext4_provider().into();
+    let vfs_manager = VfsManager::builder().provider(provider).build();
     vfs_manager.mount(None, "/", "ext4", Default::default())
         .await
         .attach_printable("mount ext4")?;
 
-    let (_, mount_info, _) = vfs_manager.locate_mount("/".as_ref()).await?;
+    let (_, mount_info, _) = vfs_manager.locate_mount(&"/".into()).await?;
     let fs = mount_info.fs;
     let root_vnode = fs.root_vnode().await?;
+    let root_vnode = root_vnode.to_dir().unwrap();
 
     info!("root mounted");
 
     // --- 2. mkdir ---
-    root_vnode
-        .mkdir("ktest".as_ref(), FileMode::OWNER_RWE)
+    let d_node = root_vnode
+        .create("ktest".as_ref(), VnodeType::Directory, FileMode::OWNER_RWE, None)
         .await
         .attach_printable("mkdir ktest")?;
+    let d_node = d_node.to_dir().unwrap();
     debug!("mkdir ok");
 
     // --- 3. create file & write ---
-    let fnode_handle = root_vnode
-    .open_dir_handle()
-        .open(
-            "hello.txt".as_ref(),
-            FileOpen::new(2 | OpenStatus::CREATE.bits()).change_context_lazy(|| KernelError::new(Errno::EINVAL))?,
-            FileMode::OWNER_RWE,
-        )
+    let fnode = d_node
+        .create("hello.txt".as_ref(), VnodeType::File, FileMode::OWNER_RWE, None)
+        .await?;
+    let fnode_handle = fnode
+        .to_file()
+        .unwrap()
+        .clone()
+        .open(FileOpen::new(2 | OpenStatus::CREATE.bits()).change_context_lazy(|| KernelError::new(Errno::EINVAL))?)
         .await
         .attach_printable("create file")?;
 
@@ -80,26 +80,25 @@ async fn test_basic() -> VfsResult<()> {
     debug!("read ok => {:?}", &buf[..n]);
 
     // --- 5. rename ---
-    vfs_manager.rename(
-        "/hello.txt".as_ref(),
-        "/greet.txt".as_ref(),
-    )
+    d_node
+        .rename("hello.txt".as_ref(), &d_node, "greet.txt".as_ref())
         .await
         .attach_printable("rename file")?;
     info!("rename ok");
 
     // --- 6. metadata sanity ---
-    let meta = vfs_manager.get_vnode("/ktest", false).await?.metadata().await?;
+    let meta = d_node.metadata().await?;
     assert_eq!(meta.kind, VnodeType::Directory);
 
     // --- 7. unlink & rmdir ---
-    vfs_manager.unlink("/greet.txt".as_ref()).await?;
-    vfs_manager.rmdir("/ktest".as_ref()).await?;
+    d_node.unlink("greet.txt".as_ref()).await?;
+    d_node.rmdir("ktest".as_ref()).await?;
     info!("unlink + rmdir ok");
 
     // --- 8. list root ---
-    let list = vfs_manager.readdir("/").await?;
-    info!("list root: {:?}", list);
+    let dir_handle = d_node.clone().open_dir().await?;
+    let list = dir_handle.read_dir_chunk(None).await?;
+    info!("list root: {:?}", &list[..]);
     info!("list root ok");
 
     Ok(())

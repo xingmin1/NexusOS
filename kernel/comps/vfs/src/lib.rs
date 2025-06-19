@@ -55,6 +55,8 @@ pub mod static_dispatch;
 /// 包含不同文件系统的实现，如内存文件系统等。
 pub mod impls;
 
+use alloc::sync::Arc;
+use ostd::sync::spin::InitOnce;
 /// VFS 测试模块
 #[cfg(ktest)]
 // pub mod tests;
@@ -66,5 +68,22 @@ pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, F
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
+pub use static_dispatch::{vnode::{SVnode, file::SFile, dir::SDir, symlink::SSymlink}, filesystem::SFileSystem, provider::SProvider};
+pub use impls::ext4_fs::{get_ext4_provider, Ext4Provider, Ext4Fs, Ext4Vnode, Ext4FileHandle, Ext4DirHandle};
+
+use crate::path_resolver::PathResolver;
 // pub use impls::memfs::{InMemoryFsProvider, get_memfs_provider};
 
+pub static VFS_MANAGER: InitOnce<Arc<VfsManager>> = InitOnce::uninitialized();
+
+pub fn init_vfs() {
+    let vfs_manager = VfsManager::builder()
+        .provider(get_ext4_provider().into())
+        .build();
+    VFS_MANAGER.try_init(vfs_manager).unwrap();
+}
+
+pub fn get_path_resolver<'a>() -> PathResolver<'a> {
+    let vfs_manager = VFS_MANAGER.try_get().unwrap();
+    PathResolver::new(&vfs_manager, &vfs_manager.dentry_cache, true)
+}

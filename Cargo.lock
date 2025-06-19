@@ -927,6 +927,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04d2cd9c18b9f454ed67da600630b021a8a80bf33f8c95896ab33aaf1c26b728"
 
 [[package]]
+name = "delegate"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9b6483c2bbed26f97861cf57651d4f2b731964a28cd2257f934a4b452480d21"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+]
+
+[[package]]
 name = "derive_more"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,12 +1011,13 @@ checksum = "4445909572dbd556c457c849c4ca58623d84b27c8fff1e74b0b4227d8b90d17b"
 
 [[package]]
 name = "elf_loader"
-version = "0.9.3"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "289a3b66fc21982f251247b76338965504de75b1c5bd2d49e80ff1db38cbf482"
+checksum = "30a0da8db95cff71e500b3d7015c2441a4eb628e0df788b23d1b8d1243314342"
 dependencies = [
  "bitflags 2.9.0",
  "cfg-if",
+ "delegate",
  "elf",
 ]
 

@@ -1,7 +1,7 @@
 //! 借用型路径切片
 
 use alloc::{borrow::Cow, string::ToString};
-use crate::PathBuf;
+use crate::path::PathBuf;
 
 use super::normalize;
 

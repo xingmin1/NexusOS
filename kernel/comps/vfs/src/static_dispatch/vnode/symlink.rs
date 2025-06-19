@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use crate::impls::ext4_fs::vnode::Ext4Vnode;
 use crate::types::{VnodeId, VnodeMetadataChanges};
-use crate::{PathBuf, VfsResult, Vnode, VnodeMetadata};
+use crate::{path::PathBuf, VfsResult, Vnode, VnodeMetadata};
 use crate::traits::SymlinkCap;
 
 #[derive(Clone)]

@@ -4,7 +4,7 @@ use alloc::{borrow::Cow, string::ToString};
 use alloc::string::String;
 use core::ops::{Deref, DerefMut};
 
-use crate::PathSlice;
+use crate::path::PathSlice;
 
 use super::normalize;
 

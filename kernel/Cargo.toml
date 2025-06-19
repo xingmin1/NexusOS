@@ -7,7 +7,7 @@ edition = "2021"
 ostd = { path = "../ostd" }
 nexus-error = { path = "libs/nexus-error" }
 align_ext = { path = "../ostd/libs/align_ext" }
-elf_loader = { version = "0.9.3", default-features = false }
+elf_loader = { version = "0.12.0", default-features = false }
 aster-rights = { path = "libs/aster-rights" }
 aster-rights-proc = { path = "libs/aster-rights-proc" }
 typeflags = { path = "libs/typeflags" }

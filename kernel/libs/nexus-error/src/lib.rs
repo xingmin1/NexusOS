@@ -11,7 +11,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 /// Error number.
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, num_enum::TryFromPrimitive)]
 pub enum Errno {
     EPERM = 1,    /* Operation not permitted */
     ENOENT = 2,   /* No such file or directory */

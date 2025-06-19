@@ -12,14 +12,14 @@ pub struct Ext4Fs {
     mount_id: u64,
     fs_id:    u64,
     options:  FsOptions,
-    block:    Arc<dyn BlockDevice>,
+    _block:    Arc<dyn BlockDevice>,
     pub inner:    Mutex<ext4::Ext4>, // 同步 ext4 实例
 }
 
 impl Ext4Fs {
     pub fn new(mount_id: u64, fs_id: u64, options: FsOptions, block: Arc<dyn BlockDevice>) -> Self {
         let inner = ext4::Ext4::load(block.clone()).expect("ext4 load failed");
-        Self { mount_id, fs_id, options, block, inner: Mutex::new(inner) }
+        Self { mount_id, fs_id, options, _block: block, inner: Mutex::new(inner) }
     }
 
     pub fn root_vnode_arc(self: Arc<Self>) -> Arc<Ext4Vnode> {

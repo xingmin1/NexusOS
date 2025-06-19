@@ -49,6 +49,7 @@ impl FileSystemProvider for Ext4Provider {
             }
         }
 
+        #[allow(non_local_definitions)]
         impl<H, T> BlockDevice for VirtioBlockDevice<H, T>
         where
             H: virtio_drivers::Hal + Send + Sync + 'static,

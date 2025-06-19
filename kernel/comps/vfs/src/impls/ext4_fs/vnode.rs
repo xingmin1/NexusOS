@@ -12,7 +12,7 @@ use nexus_error::{error_stack::{Report, ResultExt}, Errno, Error};
 use ostd::sync::Mutex;
 use crate::{traits::{DirCap, DirHandle, FileCap, FileHandle, VnodeCapability}, FileSystem};
 use crate::impls::ext4_fs::filesystem::Ext4Fs;
-use crate::{vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, DirectoryEntry, FileOpen, VfsResult, Vnode, VnodeMetadata, VnodeType};
+use crate::{vfs_err_invalid_argument, vfs_err_not_found, vfs_err_unsupported, DirectoryEntry, FileOpen, VfsResult, Vnode, VnodeMetadata, VnodeType};
 use crate::types::{FileMode, OsStr, SeekFrom, Timestamps, VnodeMetadataChanges};
 /* ---------- 内部工具 ---------- */
 
@@ -30,9 +30,21 @@ fn convert_ftype(ft: FileType) -> VnodeType {
     }
 }
 
+#[inline]
+fn convert_err(e: &Ext4Error) -> Errno {
+    (e.code() as i32).try_into().unwrap()
+}
+
 /// 将 another_ext4 错误映射为 VFS 错误
-fn map_err(e: Ext4Error) -> Report<crate::verror::KernelError> {
-    vfs_err_io_error!("ext4 error {:?}", e.code())
+fn map_err_with_msg(e: Ext4Error, msg: Option<&'static str>) -> Report<crate::verror::KernelError> {
+    let err = Error::with_message(convert_err(&e), msg.unwrap_or("ext4 error"));
+    Err::<(), _>(e)
+        .change_context_lazy(|| err)
+        .unwrap_err()
+}
+
+fn map_err(msg: Option<&'static str>) -> impl Fn(Ext4Error) -> Report<crate::verror::KernelError> {
+    move |e| map_err_with_msg(e, msg)
 }
 
 /// 将 Ext4 `FileAttr` 转为 VFS `VnodeMetadata`
@@ -100,7 +112,7 @@ impl Vnode for Ext4Vnode {
             .lock()
             .await
             .getattr(self.inode)
-            .map_err(map_err)?;
+            .map_err(map_err(Some("getattr error in Ext4Vnode::metadata")))?;
         Ok(attr2meta(&self.fs, &attr))
     }
 
@@ -121,7 +133,7 @@ impl Vnode for Ext4Vnode {
                 None,
                 None,
             )
-            .map_err(map_err)?;
+            .map_err(map_err(Some("setattr error in Ext4Vnode::set_metadata")))?;
         Ok(())
     }
 
@@ -161,7 +173,7 @@ impl FileHandle for Ext4FileHandle {
             .lock()
             .await
             .read(self.vnode.inode, off as usize, buf)
-            .map_err(map_err)?;
+            .map_err(map_err(Some("read error in Ext4FileHandle::read_at")))?;
         Ok(sz)
     }
 
@@ -176,7 +188,7 @@ impl FileHandle for Ext4FileHandle {
             .lock()
             .await
             .write(self.vnode.inode, off as usize, buf)
-            .map_err(map_err)?;
+            .map_err(map_err(Some("write error in Ext4FileHandle::write_at")))?;
         Ok(sz)
     }
 
@@ -342,7 +354,7 @@ impl DirCap for Ext4Vnode {
             .await
             .lookup(self.inode, name)
             .map_err(|_| vfs_err_not_found!(name))?;
-        let attr = self.as_fs().inner.lock().await.getattr(ino).map_err(map_err)?;
+        let attr = self.as_fs().inner.lock().await.getattr(ino).map_err(map_err(Some("getattr error in Ext4Vnode::lookup")))?;
         Ok(Ext4Vnode::new(ino, convert_ftype(attr.ftype), self.fs.clone()))
     }
 
@@ -367,7 +379,7 @@ impl DirCap for Ext4Vnode {
             .lock()
             .await
             .create(self.inode, name, inode_mode)
-            .map_err(map_err)?;
+            .map_err(map_err(Some("create error in Ext4Vnode::create")))?;
         Ok(Ext4Vnode::new(ino, kind, self.fs.clone()))
     }
 
@@ -382,7 +394,7 @@ impl DirCap for Ext4Vnode {
             .lock()
             .await
             .rename(self.inode, old_name, new_parent.id() as u32, new_name)
-            .map_err(map_err)
+            .map_err(map_err(Some("rename error in Ext4Vnode::rename")))
     }
 
     async fn unlink(&self, name: &OsStr) -> VfsResult<()> {
@@ -391,7 +403,7 @@ impl DirCap for Ext4Vnode {
             .lock()
             .await
             .unlink(self.inode, name)
-            .map_err(map_err)
+            .map_err(map_err(Some("unlink error in Ext4Vnode::unlink")))
     }
 
     async fn rmdir(&self, name: &OsStr) -> VfsResult<()> {
@@ -400,7 +412,7 @@ impl DirCap for Ext4Vnode {
             .lock()
             .await
             .rmdir(self.inode, name)
-            .map_err(map_err)
+            .map_err(map_err(Some("rmdir error in Ext4Vnode::rmdir")))
     }
 
     async fn link(
@@ -410,14 +422,14 @@ impl DirCap for Ext4Vnode {
         new_name: &OsStr,
     ) -> VfsResult<()> {
         let fs = self.as_fs().inner.lock().await;
-        let target = fs.lookup(self.inode, target_name).map_err(map_err)?;
+        let target = fs.lookup(self.inode, target_name).map_err(map_err(Some("lookup error in Ext4Vnode::link")))?;
 
         if let Ok(_) = fs.lookup(new_parent.id() as u32, new_name) {
             return Err(Error::with_message(Errno::EEXIST, "link: target already exists").into());
         }
 
         fs.link(target, new_parent.id() as u32, new_name)
-            .map_err(map_err)
+            .map_err(map_err(Some("link error in Ext4Vnode::link")))
     }
 }
 

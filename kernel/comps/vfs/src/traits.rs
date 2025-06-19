@@ -153,8 +153,8 @@ pub trait DirHandle: Send + Sync + 'static {
 
     fn vnode(&self) -> &Arc<Self::Vnode>;
 
-    /// 读取最多 `buf.len()` 条目录项，返回实际写入条目数  
-    fn read_dir_chunk(&self, buf: &mut [DirectoryEntry]) -> impl Future<Output = VfsResult<usize>> + Send;
+    /// 读取最多 `len` 条目录项，若 `len` 为 `None` 则读取所有条目  
+    fn read_dir_chunk(&self, len: Option<usize>) -> impl Future<Output = VfsResult<&[DirectoryEntry]>> + Send;
     fn seek_dir(&self, offset: u64) -> impl Future<Output = VfsResult<()>> + Send;
     fn close(&self) -> impl Future<Output = VfsResult<()>> + Send;
 }

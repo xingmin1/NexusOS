@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 use crate::impls::ext4_fs::vnode::{Ext4DirHandle, Ext4Vnode};
-use crate::types::{VnodeId, VnodeMetadataChanges};
+use crate::types::{DirectoryEntry, VnodeId, VnodeMetadataChanges};
 use crate::{DirHandle, VfsResult, Vnode, VnodeMetadata};
 use crate::static_dispatch::vnode::SVnode;
 use crate::traits::DirCap;
@@ -117,9 +117,9 @@ impl SDirHandle {
         }
     }
 
-    pub async fn read_dir_chunk(&self, buf: &mut [crate::types::DirectoryEntry]) -> VfsResult<usize> {
+    pub async fn read_dir_chunk(&self, len: Option<usize>) -> VfsResult<&[DirectoryEntry]> {
         match self {
-            SDirHandle::Ext4(h) => h.read_dir_chunk(buf).await,
+            SDirHandle::Ext4(h) => h.read_dir_chunk(len).await,
         }
     }
 

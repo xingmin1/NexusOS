@@ -264,14 +264,14 @@ impl DirHandle for Ext4DirHandle {
 
     async fn read_dir_chunk(
         &self,
-        buf: &mut [DirectoryEntry],
-    ) -> VfsResult<usize> {
+        len: Option<usize>,
+    ) -> VfsResult<&[DirectoryEntry]> {
         let mut i = self.idx.lock().await;
         let remain = self.entries.len().saturating_sub(*i);
-        let n = buf.len().min(remain);
-        buf[..n].clone_from_slice(&self.entries[*i..*i + n]);
+        let n = len.map(|l| l.min(remain)).unwrap_or(remain);
+        let ret = &self.entries[*i..*i + n];
         *i += n;
-        Ok(n)
+        Ok(ret)
     }
 
     async fn seek_dir(&self, offset: u64) -> VfsResult<()> {

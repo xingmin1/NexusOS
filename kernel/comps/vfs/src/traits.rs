@@ -128,6 +128,21 @@ pub trait DirCap: VnodeCapability {
         new_parent: &Self,
         new_name: &OsStr,
     ) -> VfsResult<()>;
+
+    
+    /// 删除普通文件或符号链接；若目标是目录返回 `EISDIR`
+    async fn unlink(&self, name: &OsStr) -> VfsResult<()>;
+
+    /// 删除空目录；若目标非目录返回 `ENOTDIR`
+    async fn rmdir(&self, name: &OsStr) -> VfsResult<()>;
+
+    /// 创建硬链接：把 `target` 追加到 `new_parent/new_name`
+    async fn link(
+        &self,                 // old_parent
+        target_name: &OsStr,   // old_name
+        new_parent: &Self,
+        new_name: &OsStr,
+    ) -> VfsResult<()>;
 }
 
 /// 目录句柄

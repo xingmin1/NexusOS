@@ -8,7 +8,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 use another_ext4::{Ext4Error, FileAttr, FileType, InodeMode};
-use nexus_error::error_stack::{Report, ResultExt};
+use nexus_error::{error_stack::{Report, ResultExt}, Errno, Error};
 use ostd::sync::Mutex;
 use crate::{traits::{DirCap, DirHandle, FileCap, FileHandle, VnodeCapability}, FileSystem};
 use crate::impls::ext4_fs::filesystem::Ext4Fs;
@@ -382,6 +382,41 @@ impl DirCap for Ext4Vnode {
             .lock()
             .await
             .rename(self.inode, old_name, new_parent.id() as u32, new_name)
+            .map_err(map_err)
+    }
+
+    async fn unlink(&self, name: &OsStr) -> VfsResult<()> {
+        self.as_fs()
+            .inner
+            .lock()
+            .await
+            .unlink(self.inode, name)
+            .map_err(map_err)
+    }
+
+    async fn rmdir(&self, name: &OsStr) -> VfsResult<()> {
+        self.as_fs()
+            .inner
+            .lock()
+            .await
+            .rmdir(self.inode, name)
+            .map_err(map_err)
+    }
+
+    async fn link(
+        &self,
+        target_name: &OsStr,
+        new_parent: &Self,
+        new_name: &OsStr,
+    ) -> VfsResult<()> {
+        let fs = self.as_fs().inner.lock().await;
+        let target = fs.lookup(self.inode, target_name).map_err(map_err)?;
+
+        if let Ok(_) = fs.lookup(new_parent.id() as u32, new_name) {
+            return Err(Error::with_message(Errno::EEXIST, "link: target already exists").into());
+        }
+
+        fs.link(target, new_parent.id() as u32, new_name)
             .map_err(map_err)
     }
 }

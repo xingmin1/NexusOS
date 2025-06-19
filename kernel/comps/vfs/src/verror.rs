@@ -63,7 +63,6 @@ macro_rules! vfs_err_not_found {
 macro_rules! vfs_err_io_error {
     ($context:expr) => {
         {
-            use alloc::string::ToString;
             nexus_error::error_stack::Report::new(
                 nexus_error::Error::with_message(
                     nexus_error::Errno::EIO,

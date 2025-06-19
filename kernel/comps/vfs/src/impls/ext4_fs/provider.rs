@@ -1,18 +1,14 @@
 //! 将上述文件系统注册为 VFS Provider
 
-use alloc::{boxed::Box, sync::Arc};
-
+use alloc::sync::Arc;
 use another_ext4::{Block, BlockDevice};
-use async_trait::async_trait;
 use ostd::{drivers::virtio::block::get_block_device, sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
 use tracing::info;
-use vfs::{
-    types::{FilesystemId, MountId}, AsyncBlockDevice, FileSystem, FileSystemProvider, FsOptions,
-    VfsResult,
-};
+use crate::impls::ext4_fs::filesystem::Ext4Fs;
 use virtio_drivers::device::blk::VirtIOBlk;
-
-use crate::{block_dev::VirtioBlockDevice, filesystem::Ext4Fs};
+use crate::{AsyncBlockDevice, FileSystemProvider, FsOptions, VfsResult};
+use crate::impls::ext4_fs::block_dev::VirtioBlockDevice;
+use crate::types::{FilesystemId, MountId};
 
 pub struct Ext4Provider;
 
@@ -20,17 +16,16 @@ pub fn get_ext4_provider() -> Arc<impl FileSystemProvider> {
     Arc::new(Ext4Provider)
 }
 
-#[async_trait]
 impl FileSystemProvider for Ext4Provider {
     type FS = Ext4Fs;
-    
+
     fn fs_type_name(&self) -> &'static str {
         "ext4"
     }
 
     async fn mount(
         &self,
-        source_device: Option<Arc<dyn AsyncBlockDevice + Send + Sync>>,
+        source_device: Option<Arc<dyn AsyncBlockDevice>>,
         options: &FsOptions,
         mount_id: MountId,
         fs_id: FilesystemId,
@@ -51,6 +46,23 @@ impl FileSystemProvider for Ext4Provider {
 
             fn write_block(&self, block: &Block) {
                 self.0.write_blocks(block.id, &block.data).block().unwrap();
+            }
+        }
+
+        impl<H, T> BlockDevice for VirtioBlockDevice<H, T>
+        where
+            H: virtio_drivers::Hal + Send + Sync + 'static,
+            T: virtio_drivers::transport::Transport + Send + Sync + 'static,
+        {
+            fn read_block(&self, block_id: u64) -> Block {
+                let mut block = Block::default();
+                self.read_blocks(block_id, &mut block.data).block().unwrap();
+                block.id = block_id;
+                block
+            }
+        
+            fn write_block(&self, block: &Block) {
+                self.write_blocks(block.id, &block.data).block().unwrap();
             }
         }
 

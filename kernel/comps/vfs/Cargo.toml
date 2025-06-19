@@ -14,6 +14,8 @@ ostd = { path = "../../../ostd" }
 nexus-error = { path = "../../libs/nexus-error" } 
 async-trait = "0.1.88"
 tracing = { version = "0.1.41", default-features = false }
+another_ext4 = { path = "../another_ext4" }
+virtio-drivers = { path = "../../../ostd/libs/virtio-drivers", version = "0.11.0" }
 # Cargo.toml
 tracing-subscriber = { version = "0.3", default-features = false, features = ["alloc"] }
 

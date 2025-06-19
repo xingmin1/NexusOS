@@ -18,8 +18,8 @@ fn block_on<F: core::future::Future>(f: F) -> F::Output {
 extern crate alloc;
 
 use alloc::{format, sync::Arc, vec::Vec};
-use vfs::verror::KernelError;
-use vfs::VfsManager;
+use crate::verror::KernelError;
+use crate::VfsManager;
 use core::sync::atomic::{AtomicBool, Ordering};
 use nexus_error::error_stack::ResultExt;
 use ostd::prelude::ktest;
@@ -27,7 +27,6 @@ use ostd::task::{scheduler, scheduler::spawn, yield_now};
 use tracing::{debug, error, info};
 
 use crate::get_ext4_provider;
-use vfs::{types::{FileMode, VnodeType}, AccessMode, FileSystemProvider, FileOpen, OpenStatus, VfsManagerBuilder, VfsResult};
 
 const RW: usize = 2;
 const R: usize = 0;

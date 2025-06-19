@@ -3,19 +3,17 @@
 use alloc::sync::Arc;
 use ostd::sync::Mutex;
 
-use crate::vnode::Ext4Vnode;
 use another_ext4::{self as ext4, BlockDevice};
-use vfs::types::VnodeId;
-use vfs::{
-    types::{FilesystemId, MountId}, vfs_err_unsupported, FileSystem, FilesystemStats, FsOptions, VfsResult
-};
+use crate::{vfs_err_unsupported, FileSystem, FilesystemStats, FsOptions, VfsResult};
+use crate::impls::ext4_fs::vnode::Ext4Vnode;
+use crate::types::{FilesystemId, MountId, VnodeId};
 
 pub struct Ext4Fs {
     mount_id: u64,
     fs_id:    u64,
     options:  FsOptions,
     block:    Arc<dyn BlockDevice>,
-    pub(crate) inner:    Mutex<ext4::Ext4>, // 同步 ext4 实例
+    pub inner:    Mutex<ext4::Ext4>, // 同步 ext4 实例
 }
 
 impl Ext4Fs {
@@ -24,7 +22,7 @@ impl Ext4Fs {
         Self { mount_id, fs_id, options, block, inner: Mutex::new(inner) }
     }
 
-    pub fn root_vnode_arc(self: &Arc<Self>) -> Arc<Ext4Vnode> {
+    pub fn root_vnode_arc(self: Arc<Self>) -> Arc<Ext4Vnode> {
         Ext4Vnode::new_root(self)
     }
 }

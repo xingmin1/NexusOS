@@ -102,7 +102,6 @@ dependencies = [
  "error-stack",
  "log",
  "ostd",
- "vfs",
 ]
 
 [[package]]
@@ -3273,6 +3272,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vfs"
 version = "0.1.0"
 dependencies = [
+ "another_ext4",
  "async-trait",
  "bitflags 2.9.0",
  "id-alloc",
@@ -3281,6 +3281,7 @@ dependencies = [
  "ostd",
  "tracing 0.1.41",
  "tracing-subscriber 0.3.19",
+ "virtio-drivers",
 ]
 
 [[package]]

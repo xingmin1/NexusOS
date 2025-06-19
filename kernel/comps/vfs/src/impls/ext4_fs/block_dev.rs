@@ -1,12 +1,11 @@
 //! 将 VirtIOBlk 封装为 VFS 与 another_ext4 都能使用的块设备。
 
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 use core::sync::atomic::{AtomicU64, Ordering};
-
 use async_trait::async_trait;
 use ostd::{sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
-use vfs::{AsyncBlockDevice, VfsResult};
 use virtio_drivers::device::blk::VirtIOBlk;
+use crate::{AsyncBlockDevice, VfsResult};
 
 /// 4 KiB 逻辑块大小，与 ext4 superblock 缺省一致。
 const LOGICAL_BLOCK_SIZE: u32 = 4096;

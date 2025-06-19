@@ -8,16 +8,12 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 use another_ext4::{Ext4Error, FileAttr, FileType, InodeMode};
-use nexus_error::{error_stack::{Report, ResultExt}, Errno};
-use nexus_error::error_stack::FutureExt;
+use nexus_error::error_stack::{Report, ResultExt};
 use ostd::sync::Mutex;
-use vfs::{types::{
-    DirectoryEntry, FileMode, OsStr, SeekFrom, Timestamps,
-    VnodeMetadata, VnodeMetadataChanges, VnodeType,
-}, vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, FileOpen, FileSystem, VfsResult, Vnode};
-use vfs::traits::{DirCap, DirHandle, FileCap, FileHandle, VnodeCapability};
-use crate::filesystem::Ext4Fs;
-
+use crate::{traits::{DirCap, DirHandle, FileCap, FileHandle, VnodeCapability}, FileSystem};
+use crate::impls::ext4_fs::filesystem::Ext4Fs;
+use crate::{vfs_err_invalid_argument, vfs_err_io_error, vfs_err_not_found, vfs_err_unsupported, DirectoryEntry, FileOpen, VfsResult, Vnode, VnodeMetadata, VnodeType};
+use crate::types::{FileMode, OsStr, SeekFrom, Timestamps, VnodeMetadataChanges};
 /* ---------- 内部工具 ---------- */
 
 #[inline]
@@ -35,15 +31,12 @@ fn convert_ftype(ft: FileType) -> VnodeType {
 }
 
 /// 将 another_ext4 错误映射为 VFS 错误
-fn map_err(e: Ext4Error) -> Report<vfs::verror::KernelError> {
+fn map_err(e: Ext4Error) -> Report<crate::verror::KernelError> {
     vfs_err_io_error!("ext4 error {:?}", e.code())
 }
 
 /// 将 Ext4 `FileAttr` 转为 VFS `VnodeMetadata`
-fn attr2meta<B>(fs: &Ext4Fs, a: &FileAttr) -> VnodeMetadata
-where
-    B: another_ext4::BlockDevice + Send + Sync + 'static,
-{
+fn attr2meta(fs: &Ext4Fs, a: &FileAttr) -> VnodeMetadata {
     VnodeMetadata {
         vnode_id: a.ino as u64,
         fs_id: fs.id(),
@@ -67,11 +60,11 @@ pub struct Ext4Vnode {
 }
 
 impl Ext4Vnode {
-    pub fn new(inode: u32, kind: VnodeType, fs: &Arc<Ext4Fs>) -> Arc<Self> {
-        Arc::new(Self { inode, kind, fs: Arc::clone(fs) })
+    pub fn new(inode: u32, kind: VnodeType, fs: Arc<Ext4Fs>) -> Arc<Self> {
+        Arc::new(Self { inode, kind, fs })
     }
 
-    pub fn new_root(fs: &Arc<Ext4Fs>) -> Arc<Self> {
+    pub fn new_root(fs: Arc<Ext4Fs>) -> Arc<Self> {
         Self::new(2, VnodeType::Directory, fs) // 根目录 inode = 2
     }
 
@@ -84,10 +77,7 @@ impl Ext4Vnode {
 /* ---------- Vnode ---------- */
 
 // #[async_trait]
-impl<B> Vnode for Ext4Vnode
-where
-    B: another_ext4::BlockDevice + Send + Sync + 'static,
-{
+impl Vnode for Ext4Vnode {
     type FS = Ext4Fs;
 
     fn id(&self) -> u64 {
@@ -310,8 +300,12 @@ impl DirCap for Ext4Vnode {
             .lock()
             .await
             .listdir(self.inode)
-            .change_context_lazy(|| Errno::EIO)?
-            .attach_printable("listdir")?;
+            .change_context_lazy(||                 
+                nexus_error::Error::with_message(
+                    nexus_error::Errno::EIO,
+                    "I/O Error"
+                )
+            ).attach_printable("listdir")?;
         let mut entries = Vec::with_capacity(list.len());
         for e in list {
             let name = String::from(e.name());
@@ -340,7 +334,7 @@ impl DirCap for Ext4Vnode {
             .lookup(self.inode, name)
             .map_err(|_| vfs_err_not_found!(name))?;
         let attr = self.as_fs().inner.lock().await.getattr(ino).map_err(map_err)?;
-        Ok(Ext4Vnode::new(ino, convert_ftype(attr.ftype), &self.fs))
+        Ok(Ext4Vnode::new(ino, convert_ftype(attr.ftype), self.fs.clone()))
     }
 
     async fn create(
@@ -365,13 +359,13 @@ impl DirCap for Ext4Vnode {
             .await
             .create(self.inode, name, inode_mode)
             .map_err(map_err)?;
-        Ok(Ext4Vnode::new(ino, kind, &self.fs))
+        Ok(Ext4Vnode::new(ino, kind, self.fs.clone()))
     }
 
     async fn rename(
         &self,
         old_name: &OsStr,
-        new_parent: &self,
+        new_parent: &Self,
         new_name: &OsStr,
     ) -> VfsResult<()> {
         self.as_fs()

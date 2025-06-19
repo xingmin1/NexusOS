@@ -1,4 +1,5 @@
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
+use async_trait::async_trait;
 
 use crate::{
     path::PathBuf,
@@ -7,6 +8,7 @@ use crate::{
 };
 
 /// 块设备
+#[async_trait]
 pub trait AsyncBlockDevice: Send + Sync + 'static {
     fn device_id(&self) -> u64;
     fn block_size_bytes(&self) -> VfsResult<u32>;
@@ -39,7 +41,7 @@ pub trait FileSystem: Send + Sync + 'static {
     fn mount_id(&self) -> MountId;
     fn options(&self) -> &FsOptions;
 
-    async fn root_vnode(&self) -> VfsResult<Arc<Self::Vnode>>;
+    async fn root_vnode(self: Arc<Self>) -> VfsResult<Arc<Self::Vnode>>;
     async fn statfs(&self) -> VfsResult<FilesystemStats>;
     async fn sync(&self) -> VfsResult<()>;
     async fn prepare_unmount(&self) -> VfsResult<()>;
@@ -121,7 +123,7 @@ pub trait DirCap: VnodeCapability {
     async fn rename(
         &self,
         old_name: &OsStr,
-        new_parent: Arc<Self>,
+        new_parent: &Self,
         new_name: &OsStr,
     ) -> VfsResult<()>;
 }

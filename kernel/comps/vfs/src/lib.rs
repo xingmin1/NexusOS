@@ -53,7 +53,7 @@ pub mod static_dispatch;
 /// 文件系统具体实现模块。
 ///
 /// 包含不同文件系统的实现，如内存文件系统等。
-// pub mod impls;
+pub mod impls;
 
 /// VFS 测试模块
 #[cfg(ktest)]

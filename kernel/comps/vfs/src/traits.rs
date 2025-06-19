@@ -1,3 +1,5 @@
+use core::future::Future;
+
 use alloc::{boxed::Box, sync::Arc};
 use async_trait::async_trait;
 
@@ -24,13 +26,13 @@ pub trait FileSystemProvider: Send + Sync + 'static {
 
     fn fs_type_name(&self) -> &'static str;
 
-    async fn mount(
+    fn mount(
         &self,
         dev: Option<Arc<dyn AsyncBlockDevice + Send + Sync>>,
         opts: &FsOptions,
         mount_id: MountId,
         fs_id: FilesystemId,
-    ) -> VfsResult<Arc<Self::FS>>;
+    ) -> impl Future<Output = VfsResult<Arc<Self::FS>>> + Send;
 }
 
 /// 文件系统实例
@@ -41,11 +43,11 @@ pub trait FileSystem: Send + Sync + 'static {
     fn mount_id(&self) -> MountId;
     fn options(&self) -> &FsOptions;
 
-    async fn root_vnode(self: Arc<Self>) -> VfsResult<Arc<Self::Vnode>>;
-    async fn statfs(&self) -> VfsResult<FilesystemStats>;
-    async fn sync(&self) -> VfsResult<()>;
-    async fn prepare_unmount(&self) -> VfsResult<()>;
-    async fn reclaim_vnode(&self, id: VnodeId) -> VfsResult<bool>;
+    fn root_vnode(self: Arc<Self>) -> impl Future<Output = VfsResult<Arc<Self::Vnode>>> + Send;
+    fn statfs(&self) -> impl Future<Output = VfsResult<FilesystemStats>> + Send;
+    fn sync(&self) -> impl Future<Output = VfsResult<()>> + Send;
+    fn prepare_unmount(&self) -> impl Future<Output = VfsResult<()>> + Send;
+    fn reclaim_vnode(&self, id: VnodeId) -> impl Future<Output = VfsResult<bool>> + Send;
     fn fs_type_name(&self) -> &'static str;
     fn is_readonly(&self) -> bool;
 }
@@ -57,8 +59,8 @@ pub trait Vnode: Send + Sync + 'static {
     fn id(&self) -> VnodeId;
     fn filesystem(&self) -> &Self::FS;
 
-    async fn metadata(&self) -> VfsResult<VnodeMetadata>;
-    async fn set_metadata(&self, ch: VnodeMetadataChanges) -> VfsResult<()>;
+    fn metadata(&self) -> impl Future<Output = VfsResult<VnodeMetadata>> + Send;
+    fn set_metadata(&self, ch: VnodeMetadataChanges) -> impl Future<Output = VfsResult<()>> + Send;
 
     fn cap_type(&self) -> VnodeType;
 
@@ -85,7 +87,7 @@ pub trait FileCap: VnodeCapability {
     /// 打开文件后产生的句柄类型
     type Handle: FileHandle<Vnode = Self>;
 
-    async fn open(self: Arc<Self>, flags: FileOpen) -> VfsResult<Arc<Self::Handle>>;
+    fn open(self: Arc<Self>, flags: FileOpen) -> impl Future<Output = VfsResult<Arc<Self::Handle>>> + Send;
 }
 
 /// 文件句柄接口
@@ -95,54 +97,54 @@ pub trait FileHandle: Send + Sync + 'static {
     fn flags(&self) -> FileOpen;
     fn vnode(&self) -> &Arc<Self::Vnode>;
 
-    async fn read_at(&self, off: u64, buf: &mut [u8]) -> VfsResult<usize>;
-    async fn write_at(&self, off: u64, buf: &[u8]) -> VfsResult<usize>;
+    fn read_at(&self, off: u64, buf: &mut [u8]) -> impl Future<Output = VfsResult<usize>> + Send;
+    fn write_at(&self, off: u64, buf: &[u8]) -> impl Future<Output = VfsResult<usize>> + Send;
 
     /// Scatter / Gather I/O —— 参见 readv/writev 设计  
-    async fn read_vectored_at(&self, off: u64, bufs: &mut [&mut [u8]])
-        -> VfsResult<usize>;
-    async fn write_vectored_at(&self, off: u64, bufs: &[&[u8]])
-        -> VfsResult<usize>;
+    fn read_vectored_at(&self, off: u64, bufs: &mut [&mut [u8]])
+        -> impl Future<Output = VfsResult<usize>> + Send;
+    fn write_vectored_at(&self, off: u64, bufs: &[&[u8]])
+        -> impl Future<Output = VfsResult<usize>> + Send;
 
-    async fn seek(&self, pos: SeekFrom) -> VfsResult<u64>;
-    async fn flush(&self) -> VfsResult<()>;
-    async fn close(&self) -> VfsResult<()>;
+    fn seek(&self, pos: SeekFrom) -> impl Future<Output = VfsResult<u64>> + Send;
+    fn flush(&self) -> impl Future<Output = VfsResult<()>> + Send;
+    fn close(&self) -> impl Future<Output = VfsResult<()>> + Send;
 }
 
 /// 目录能力
 pub trait DirCap: VnodeCapability {
     type DirHandle: DirHandle<Vnode = Self>;
 
-    async fn open_dir(self: Arc<Self>) -> VfsResult<Arc<Self::DirHandle>>;
-    async fn lookup(&self, name: &OsStr) -> VfsResult<Arc<Self>>;
-    async fn create(
+    fn open_dir(self: Arc<Self>) -> impl Future<Output = VfsResult<Arc<Self::DirHandle>>> + Send;
+    fn lookup(&self, name: &OsStr) -> impl Future<Output = VfsResult<Arc<Self>>> + Send;
+    fn create(
         &self,
         name: &OsStr,
         kind: VnodeType,
         perm: FileMode,
         rdev: Option<u64>,
-    ) -> VfsResult<Arc<Self>>;
-    async fn rename(
+    ) -> impl Future<Output = VfsResult<Arc<Self>>> + Send;
+    fn rename(
         &self,
         old_name: &OsStr,
         new_parent: &Self,
         new_name: &OsStr,
-    ) -> VfsResult<()>;
+    ) -> impl Future<Output = VfsResult<()>> + Send;
 
     
     /// 删除普通文件或符号链接；若目标是目录返回 `EISDIR`
-    async fn unlink(&self, name: &OsStr) -> VfsResult<()>;
+    fn unlink(&self, name: &OsStr) -> impl Future<Output = VfsResult<()>> + Send;
 
     /// 删除空目录；若目标非目录返回 `ENOTDIR`
-    async fn rmdir(&self, name: &OsStr) -> VfsResult<()>;
+    fn rmdir(&self, name: &OsStr) -> impl Future<Output = VfsResult<()>> + Send;
 
     /// 创建硬链接：把 `target` 追加到 `new_parent/new_name`
-    async fn link(
+    fn link(
         &self,                 // old_parent
         target_name: &OsStr,   // old_name
         new_parent: &Self,
         new_name: &OsStr,
-    ) -> VfsResult<()>;
+    ) -> impl Future<Output = VfsResult<()>> + Send;
 }
 
 /// 目录句柄
@@ -152,12 +154,12 @@ pub trait DirHandle: Send + Sync + 'static {
     fn vnode(&self) -> &Arc<Self::Vnode>;
 
     /// 读取最多 `buf.len()` 条目录项，返回实际写入条目数  
-    async fn read_dir_chunk(&self, buf: &mut [DirectoryEntry]) -> VfsResult<usize>;
-    async fn seek_dir(&self, offset: u64) -> VfsResult<()>;
-    async fn close(&self) -> VfsResult<()>;
+    fn read_dir_chunk(&self, buf: &mut [DirectoryEntry]) -> impl Future<Output = VfsResult<usize>> + Send;
+    fn seek_dir(&self, offset: u64) -> impl Future<Output = VfsResult<()>> + Send;
+    fn close(&self) -> impl Future<Output = VfsResult<()>> + Send;
 }
 
 /// 符号链接能力
 pub trait SymlinkCap: VnodeCapability {
-    async fn readlink(&self) -> VfsResult<PathBuf>;
+    fn readlink(&self) -> impl Future<Output = VfsResult<PathBuf>> + Send;
 }

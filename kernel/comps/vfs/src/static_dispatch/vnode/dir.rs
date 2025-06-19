@@ -78,6 +78,34 @@ impl SDir {
             (SDir::Ext4(old), SDir::Ext4(new_p)) => old.rename(old_name, new_p, new_name).await,
         }
     }
+
+    /// 删除普通文件或符号链接
+    pub async fn unlink(&self, name: &crate::types::OsStr) -> VfsResult<()> {
+        match self {
+            SDir::Ext4(dir) => dir.unlink(name).await,
+        }
+    }
+
+    /// 删除空目录
+    pub async fn rmdir(&self, name: &crate::types::OsStr) -> VfsResult<()> {
+        match self {
+            SDir::Ext4(dir) => dir.rmdir(name).await,
+        }
+    }
+
+    /// 创建硬链接
+    pub async fn link(
+        &self,
+        target_name: &crate::types::OsStr,
+        new_parent: &Self,
+        new_name: &crate::types::OsStr,
+    ) -> VfsResult<()> {
+        match (self, new_parent) {
+            (SDir::Ext4(old_p), SDir::Ext4(new_p)) => {
+                old_p.link(target_name, new_p, new_name).await
+            }
+        }
+    }
 }
 
 

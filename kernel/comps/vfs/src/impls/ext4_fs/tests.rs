@@ -92,11 +92,11 @@ async fn test_basic() -> VfsResult<()> {
 
     // --- 7. unlink & rmdir ---
     d_node.unlink("greet.txt".as_ref()).await?;
-    d_node.rmdir("ktest".as_ref()).await?;
+    root_vnode.rmdir("ktest".as_ref()).await?;
     info!("unlink + rmdir ok");
 
     // --- 8. list root ---
-    let dir_handle = d_node.clone().open_dir().await?;
+    let dir_handle = root_vnode.clone().open_dir().await?;
     let list = dir_handle.read_dir_chunk(None).await?;
     info!("list root: {:?}", &list[..]);
     info!("list root ok");

@@ -36,6 +36,7 @@ fn convert_err(e: &Ext4Error) -> Errno {
 }
 
 /// 将 another_ext4 错误映射为 VFS 错误
+/// [TODO]：使用宏而不是函数，报错代码位置不对，一直是本函数
 fn map_err_with_msg(e: Ext4Error, msg: Option<&'static str>) -> Report<crate::verror::KernelError> {
     let err = Error::with_message(convert_err(&e), msg.unwrap_or("ext4 error"));
     Err::<(), _>(e)

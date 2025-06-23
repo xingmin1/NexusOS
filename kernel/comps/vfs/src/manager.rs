@@ -43,7 +43,7 @@ impl MountRegistry {
     fn new() -> Self { Self { table: RwLock::new(Map::new()) } }
 
     /// 长前缀匹配（只读快路径）
-    async fn longest_match<'a>(&self, abs: &PathSlice<'_>) -> Option<(PathBuf, MountInfo)> {
+    async fn longest_match(&self, abs: PathSlice<'_>) -> Option<(PathBuf, MountInfo)> {
         self.table.read().await.iter()
                .filter(|(p, _)| abs.starts_with(PathSlice::from(*p)))
                .max_by_key(|(p, _)| p.as_str().len())
@@ -100,7 +100,7 @@ impl VfsManager {
     pub fn builder() -> VfsManagerBuilder { VfsManagerBuilder::default() }
 
     /// 根据绝对路径获得 `(挂载点, MountInfo, 余下路径)`；只读，无锁递归
-    pub async fn locate_mount(&self, abs: &PathSlice<'_>) -> VfsResult<(PathBuf, MountInfo, PathBuf)> {
+    pub async fn locate_mount(&self, abs: PathSlice<'_>) -> VfsResult<(PathBuf, MountInfo, PathBuf)> {
         let (mpath, minfo) = self.mounts.longest_match(abs)
             .await
             .ok_or_else(|| KernelError::with_message(Errno::ENOENT, "no mount"))?;
@@ -125,7 +125,7 @@ impl VfsManager {
         if !PathSlice::from(&target_path).is_absolute() {
             return Err(KernelError::with_message(Errno::EINVAL, "mount path must be absolute").into());
         }
-        if self.mounts.longest_match(&PathSlice::from(&target_path)).await.map_or(false, |(p, _)| p == target_path) {
+        if self.mounts.longest_match(PathSlice::from(&target_path)).await.map_or(false, |(p, _)| p == target_path) {
             return Err(KernelError::with_message(Errno::EINVAL, "already mounted").into());
         }
 
@@ -148,7 +148,7 @@ impl VfsManager {
         // 5. 释放 Guard → 不释放 ID
         core::mem::forget(mount_id);
         core::mem::forget(fs_id);
-        Ok(self.mounts.longest_match(&PathSlice::from(&target_path)).await.unwrap().1.id)
+        Ok(self.mounts.longest_match(PathSlice::from(&target_path)).await.unwrap().1.id)
     }
 
     /// 卸载

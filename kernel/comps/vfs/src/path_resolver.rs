@@ -43,11 +43,11 @@ impl<'m> PathResolver<'m> {
     /// * `abs_raw` —— **必须**以 `/` 开头的 UTF‑8 字符串
     pub async fn resolve(
         &self,
-        abs_raw: &str,
+        abs_path: &mut PathBuf,
     ) -> VfsResult<SVnode> {
         // 预规范化
-        let mut todo = PathBuf::new(abs_raw)?;
-        if !PathSlice::from(&todo).is_absolute() {
+        let todo = abs_path;
+        if !todo.to_slice().is_absolute() {
             return Err(crate::vfs_err_invalid_argument!("path must be absolute"));
         }
 
@@ -57,17 +57,17 @@ impl<'m> PathResolver<'m> {
                 return Err(KernelError::with_message(Errno::ELOOP, "too many symlinks").into());
             }
 
-            match self.walk_one_mount(&todo).await? {
+            match self.walk_one_mount(todo.to_slice()).await? {
                 Step::Done(v)      => return Ok(v),
-                Step::Restart(p) => { todo = p; depth += 1; }
+                Step::Restart(p) => { *todo = p; depth += 1; }
             }
         }
     }
 
     /// 在 **单一挂载** 内遍历组件；遇到需跟随的符号链接即返回 Restart。
-    async fn walk_one_mount(&self, abs: &PathBuf) -> VfsResult<Step> {
+    async fn walk_one_mount(&self, abs: PathSlice<'_>) -> VfsResult<Step> {
         // 1. 锁定挂载信息
-        let (_mnt_path, mnt_info, rel) = self.mgr.locate_mount(&abs.into()).await?;
+        let (_mnt_path, mnt_info, rel) = self.mgr.locate_mount(abs).await?;
         let fs = mnt_info.fs.clone();
         let mut current = fs.root_vnode().await?;
 

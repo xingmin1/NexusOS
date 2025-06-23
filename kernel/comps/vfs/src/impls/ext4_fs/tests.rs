@@ -39,7 +39,7 @@ async fn test_basic() -> VfsResult<()> {
         .await
         .attach_printable("mount ext4")?;
 
-    let (_, mount_info, _) = vfs_manager.locate_mount(&"/".into()).await?;
+    let (_, mount_info, _) = vfs_manager.locate_mount("/".into()).await?;
     let fs = mount_info.fs;
     let root_vnode = fs.root_vnode().await?;
     let root_vnode = root_vnode.to_dir().unwrap();

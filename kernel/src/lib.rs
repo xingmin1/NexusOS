@@ -18,7 +18,7 @@ extern crate alloc;
 use ostd::{
     cpu::{CpuSet, PinCurrentCpu},
     smp::inter_processor_call,
-    task::{disable_preempt, scheduler::blocking_future::BlockingFuture},
+    task::{disable_preempt, scheduler::{blocking_future::BlockingFuture, spawn}},
 };
 use thread::ThreadBuilder;
 use tracing::{debug, info, trace_span, warn};
@@ -36,11 +36,13 @@ pub fn main() {
     info!("开始执行内核主函数");
     debug!("追踪系统已初始化");
 
-    let thread_span = trace_span!("thread_spawn").entered();
-    ThreadBuilder::new().spawn().block().inspect_err(|e| {
-        warn!("ThreadBuilder::spawn 失败: {:?}", e);
-    });
-    drop(thread_span);
+    spawn(async {
+        vfs::init_vfs().await;
+        let thread_span = trace_span!("thread_spawn").entered();
+        ThreadBuilder::new().path("/musl/basic/exit").spawn().block().inspect_err(|e| {
+            warn!("ThreadBuilder::spawn 失败: {:?}", e);
+        });
+    }, None);
 
     info!("内核主函数完成设置，BSP 进入空闲循环");
 

@@ -2,7 +2,7 @@
 
 use crate::error::Result;
 use alloc::{sync::Arc, vec::Vec, vec};
-use vfs::{get_path_resolver, types::FileOpenBuilder, PathBuf, SFileHandle};
+use vfs::{get_path_resolver, FileOpenBuilder, PathBuf, SFileHandle};
 
 pub struct ExtFile {
     vnode_handle: Arc<SFileHandle>,

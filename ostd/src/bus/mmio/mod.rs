@@ -109,11 +109,11 @@ fn iter_fdt_nodes() {
                 if let Some(mut reg_iter) = node.reg() {
                     if let Some(reg) = reg_iter.next() {
                         let paddr = reg.starting_address as usize;
-                        tracing::error!("paddr: {:#x}", paddr);
+                        tracing::trace!("paddr: {:#x}", paddr);
                         // 解析 IRQ
                         let irq_id = if let Some(prop) = node.property("interrupts-extended") {
                             use ostd_pod::Pod;
-                            tracing::error!("interrupts-extended: {:?}", prop);
+                            tracing::trace!("interrupts-extended: {:?}", prop);
                             let usizes = prop.as_usize().unwrap();
                             let bytes = usizes.as_bytes();
                             if bytes.len() >= 8 {
@@ -125,7 +125,7 @@ fn iter_fdt_nodes() {
                                 0
                             }
                         } else if let Some(prop) = node.property("interrupts") {
-                            tracing::error!("interrupts: {:?}", prop);
+                            tracing::trace!("interrupts: {:?}", prop);
                             let bytes = prop.value;
                             if bytes.len() >= 4 {
                                 u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])

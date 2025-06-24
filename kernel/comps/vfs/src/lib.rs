@@ -16,39 +16,39 @@ extern crate alloc;
 /// 路径操作模块 (`PathSlice`, `PathBuf`)。
 ///
 /// 提供了处理和规范化文件系统路径的类型和函数。
-pub mod path;
+mod path;
 
 /// VFS 核心 Traits 模块 (`Filesystem`, `Vnode`, `FileHandle`)。
 ///
 /// 定义了文件系统实现需要满足的接口，以及 VFS 对象的行为。
-pub mod traits;
+mod traits;
 
 /// VFS 通用类型定义模块。
 ///
 /// 包含如 `VnodeType`, `OpenFlags`, `Metadata` 等 VFS 中广泛使用的类型。
-pub mod types;
+mod types;
 
 /// VFS 错误类型定义模块 (`VfsError`, `VfsResult`)。
 ///
 /// 定义了 VFS 操作可能产生的标准错误枚举和结果类型。
-pub mod verror;
+mod verror;
 
 /// VFS 缓存模块 (`VnodeCache`, `DentryCache`)。
 ///
 /// 提供VFS性能优化所需的缓存机制。
-pub mod cache;
+mod cache;
 
 /// VFS 管理器模块 (`VfsManager`)。
 ///
 /// 提供VFS的核心管理功能，包括文件系统挂载、路径解析等。
-pub mod manager;
+mod manager;
 
 /// VFS 路径解析模块 (内部)。
 ///
 /// 实现路径解析的核心逻辑，被VfsManager使用。
 mod path_resolver;
 
-pub mod static_dispatch;
+mod static_dispatch;
 
 /// 文件系统具体实现模块。
 ///
@@ -58,13 +58,13 @@ pub mod impls;
 use alloc::sync::Arc;
 use ostd::sync::spin::InitOnce;
 /// VFS 测试模块
-#[cfg(ktest)]
+// #[cfg(ktest)]
 // pub mod tests;
 
 // 从各个模块中导出常用类型，方便使用
 pub use path::{PathSlice, PathBuf};
 pub use traits::{FileSystem, Vnode, FileHandle, DirHandle, FileSystemProvider, AsyncBlockDevice};
-pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode};
+pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode, FileOpenBuilder};
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
@@ -76,14 +76,15 @@ use crate::path_resolver::PathResolver;
 
 pub static VFS_MANAGER: InitOnce<Arc<VfsManager>> = InitOnce::uninitialized();
 
-pub fn init_vfs() {
+pub async fn init_vfs() {
     let vfs_manager = VfsManager::builder()
         .provider(get_ext4_provider().into())
         .build();
-    VFS_MANAGER.try_init(vfs_manager).unwrap();
+    vfs_manager.mount(None, "/", "ext4", Default::default()).await.unwrap();
+    VFS_MANAGER.init(vfs_manager);
 }
 
 pub fn get_path_resolver<'a>() -> PathResolver<'a> {
-    let vfs_manager = VFS_MANAGER.try_get().unwrap();
+    let vfs_manager = VFS_MANAGER.get();
     PathResolver::new(&vfs_manager, &vfs_manager.dentry_cache, true)
 }

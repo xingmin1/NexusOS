@@ -62,7 +62,14 @@ impl<'a> PathSlice<'a> {
     pub fn strip_prefix(self, base: Self) -> Option<Self> {
         if !self.starts_with(base) { return None; }
         if self.0.len() == base.0.len() { Some(Self(".")) }
-        else { Some(Self(&self.0[base.0.len()+1..])) }
+        else {
+            // 若 base 为根路径 "/"，无需再跳过一个分隔符。
+            // 示例：
+            //   self = "/foo/bar", base = "/"   =>  "foo/bar"
+            //   self = "/foo/bar", base = "/foo" =>  "bar"
+            let start = if base.is_root() { base.0.len() } else { base.0.len() + 1 };
+            Some(Self(&self.0[start..]))
+        }
     }
 
     /// 连接单个组件；组件已保证无 `/`

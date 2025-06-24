@@ -1070,20 +1070,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ext4_fs"
-version = "0.1.0"
-dependencies = [
- "another_ext4",
- "async-trait",
- "nexus-error",
- "ostd",
- "spin 0.10.0",
- "tracing 0.1.41",
- "vfs",
- "virtio-drivers",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3316,17 +3302,6 @@ dependencies = [
  "tracing 0.1.41",
  "tracing-subscriber 0.3.19",
  "virtio-drivers",
-]
-
-[[package]]
-name = "virtio-blk"
-version = "0.1.0"
-dependencies = [
- "block-dev",
- "int-to-c-enum",
- "log",
- "ostd",
- "spin 0.10.0",
 ]
 
 [[package]]

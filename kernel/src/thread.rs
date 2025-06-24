@@ -3,9 +3,7 @@ pub mod init_stack;
 pub mod loader;
 
 use alloc::{
-    sync::{Arc, Weak},
-    vec,
-    vec::Vec,
+    ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
 };
 use core::str;
 
@@ -78,16 +76,44 @@ macro_rules! current_thread_data {
     }
 }
 
-pub struct ThreadBuilder {}
+pub struct ThreadBuilder<'a> {
+    path: Option<&'a str>,
+    argv: Option<Vec<CString>>,
+    envp: Option<Vec<CString>>,
+}
 
-impl ThreadBuilder {
+impl<'a> ThreadBuilder<'a> {
     pub fn new() -> Self {
-        Self {}
+        Self { path: None, argv: None, envp: None }
     }
 
-    pub async fn spawn(&self) -> Result<Arc<ThreadSharedInfo>> {
+    pub fn path(mut self, path: &'a str) -> Self {
+        self.path = Some(path);
+        self
+    }
+
+    #[allow(unused)]
+    pub fn argv(mut self, argv: Vec<CString>) -> Self {
+        self.argv = Some(argv);
+        self
+    }
+
+    #[allow(unused)]
+    pub fn envp(mut self, envp: Vec<CString>) -> Self {
+        self.envp = Some(envp);
+        self
+    }
+
+    pub async fn spawn(&mut self) -> Result<Arc<ThreadSharedInfo>> {
         let process_vm = Arc::new(ProcessVm::alloc());
-        let user_task_options = create_user_task(&process_vm).await.inspect_err(|e| {
+        let user_task_options = create_user_task(
+            &process_vm,
+            self.path.take().unwrap(),
+            self.argv.take().unwrap_or_default(),
+            self.envp.take().unwrap_or_default(),
+        )
+        .await
+        .inspect_err(|e| {
             error!("create_user_task 失败: {:?}", e);
         })?;
         info!("创建用户任务完成，准备运行");
@@ -159,9 +185,9 @@ impl ThreadBuilder {
     }
 }
 
-async fn create_user_task(process_vm: &ProcessVm) -> Result<TaskOptions> {
+async fn create_user_task(process_vm: &ProcessVm, path: &str, argv: Vec<CString>, envp: Vec<CString>) -> Result<TaskOptions> {
     info!("开始创建用户任务");
-    let elf_load_info = load_elf_to_vm(process_vm, vec![], vec![])
+    let elf_load_info = load_elf_to_vm(process_vm, path, argv, envp)
         .await
         .inspect_err(|e| {
             error!("load_elf_to_vm 失败: {:?}", e);
@@ -169,8 +195,8 @@ async fn create_user_task(process_vm: &ProcessVm) -> Result<TaskOptions> {
 
     let vm_space = process_vm.root_vmar().vm_space().clone();
     let mut user_context = UserContext::default();
-    user_context.set_instruction_pointer(elf_load_info.entry_point() as _);
-    user_context.set_stack_pointer(elf_load_info.user_stack_top() as _);
+    user_context.set_instruction_pointer(elf_load_info.entry as _);
+    user_context.set_stack_pointer(elf_load_info.user_sp as _);
     let user_space = Arc::new(UserSpace::new(vm_space.clone(), user_context));
 
     info!(

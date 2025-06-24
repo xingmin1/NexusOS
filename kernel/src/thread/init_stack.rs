@@ -283,6 +283,7 @@ impl InitStackWriter {
 #[expect(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
+#[allow(unused)]
 pub enum AuxKey {
     AT_NULL = 0,      /* end of vector */
     AT_IGNORE = 1,    /* entry should be ignored */
@@ -317,6 +318,7 @@ pub enum AuxKey {
 }
 
 impl AuxKey {
+    #[allow(unused)]
     pub fn as_u64(&self) -> u64 {
         *self as u64
     }
@@ -347,10 +349,12 @@ impl AuxVec {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn get(&self, key: AuxKey) -> Option<u64> {
         self.table.get(&key).copied()
     }
 
+    #[allow(unused)]
     pub fn del(&mut self, key: AuxKey) -> Option<u64> {
         self.table.remove(&key)
     }

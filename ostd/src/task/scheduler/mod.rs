@@ -478,10 +478,7 @@ pub(crate) fn get_current_task_ptr() -> Option<usize> {
 /// - 将异步任务转换为阻塞任务
 pub mod blocking_future {
 
-    use alloc::boxed::Box;
-    use core::{future::*, hint::spin_loop, task::*};
-
-    use crate::early_println;
+    use core::{future::*, hint::spin_loop, pin::pin, task::*};
 
     /// 一个用于将异步任务转换为阻塞任务的 trait。
     ///
@@ -492,12 +489,11 @@ pub mod blocking_future {
     pub trait BlockingFuture: Future + Sized {
         /// 将异步任务转换为阻塞任务。
         fn block(self) -> <Self as Future>::Output {
-            let mut boxed = Box::pin(self);
+            let mut pinned = pin!(self);
             let mut ctx = Context::from_waker(maitake::task::Waker::noop());
             loop {
-                match boxed.as_mut().poll(&mut ctx) {
+                match pinned.as_mut().poll(&mut ctx) {
                     Poll::Ready(x) => {
-                        // early_println!("finished");
                         return x;
                     }
                     Poll::Pending => {

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use error_stack::Context;
+use core::fmt;
 use crate::mm::page_table::PageTableError;
 
 /// The error type which is returned from the APIs of this crate.
@@ -28,5 +30,13 @@ pub enum Error {
 impl From<PageTableError> for Error {
     fn from(_err: PageTableError) -> Error {
         Error::AccessDenied
+    }
+}
+
+impl Context for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Error: {:?}", self)
     }
 }

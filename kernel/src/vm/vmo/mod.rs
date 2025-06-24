@@ -6,6 +6,7 @@
 //! Virtual Memory Objects (VMOs).
 
 use alloc::{sync::Arc, vec};
+use nexus_error::{ostd_error_to_errno, ostd_tuple_to_errno};
 use core::{
     fmt::Debug,
     ops::{DerefMut, Range},
@@ -17,8 +18,7 @@ use bitflags::bitflags;
 use ostd::{
     collections::xarray::{CursorMut, XArray},
     mm::{
-        FallibleVmRead, FallibleVmWrite, FrameAllocOptions, UFrame, UntypedMem, VmReader, VmWriter,
-        PAGE_SIZE,
+        AnyUFrameMeta, FallibleVmRead, FallibleVmWrite, FrameAllocOptions, UFrame, UntypedMem, VmReader, VmWriter, PAGE_SIZE
     },
     sync::Mutex,
     task::scheduler::blocking_future::BlockingFuture,
@@ -220,7 +220,7 @@ impl Vmo_ {
     /// Prepares a new `UFrame` for the target index in pages, returns this new frame.
     fn prepare_page(&self, page_idx: usize) -> Result<UFrame> {
         match &self.pager {
-            None => Ok(FrameAllocOptions::new().alloc_frame()?.into()),
+            None => Ok(FrameAllocOptions::new().alloc_frame().map_err(ostd_error_to_errno)?.into()),
             Some(pager) => pager.commit_page(page_idx),
         }
     }
@@ -230,7 +230,7 @@ impl Vmo_ {
         if let Some(pager) = &self.pager {
             pager.commit_overwrite(page_idx)
         } else {
-            Ok(FrameAllocOptions::new().alloc_frame()?.into())
+            Ok(FrameAllocOptions::new().alloc_frame().map_err(ostd_error_to_errno)?.into())
         }
     }
 
@@ -346,8 +346,8 @@ impl Vmo_ {
         let mut read_offset = offset % PAGE_SIZE;
 
         let read = move |commit_fn: &mut dyn FnMut() -> Result<UFrame>| {
-            let frame = commit_fn()?;
-            frame.reader().skip(read_offset).read_fallible(writer)?;
+            let frame: ostd::mm::Frame<dyn AnyUFrameMeta> = commit_fn()?;
+            frame.reader().skip(read_offset).read_fallible(writer).map_err(ostd_tuple_to_errno)?;
             read_offset = 0;
             Ok(())
         };
@@ -364,7 +364,7 @@ impl Vmo_ {
 
         let mut write = move |commit_fn: &mut dyn FnMut() -> Result<UFrame>| {
             let frame = commit_fn()?;
-            frame.writer().skip(write_offset).write_fallible(reader)?;
+            frame.writer().skip(write_offset).write_fallible(reader).map_err(ostd_tuple_to_errno)?;
             write_offset = 0;
             Ok(())
         };

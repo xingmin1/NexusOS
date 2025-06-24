@@ -2,6 +2,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use alloc::sync::Arc;
+use error_stack::{Report, Result};
 use core::{arch::asm, ops::Range};
 
 use cfg_if::cfg_if;
@@ -9,10 +10,9 @@ use cfg_if::cfg_if;
 use super::{check_and_insert_dma_mapping, remove_dma_mapping, DmaError, HasDaddr};
 use crate::{
     arch::iommu,
-    error::Error,
     mm::{
         dma::{dma_type, Daddr, DmaType}, HasPaddr, Infallible, Paddr, USegment, UntypedMem, VmIo, VmReader, VmWriter, PAGE_SIZE
-    },
+    }, Error,
 };
 
 cfg_if! {
@@ -65,7 +65,7 @@ impl DmaStream {
         let frame_count = segment.size() / PAGE_SIZE;
         let start_paddr = segment.start_paddr();
         if !check_and_insert_dma_mapping(start_paddr, frame_count) {
-            return Err(DmaError::AlreadyMapped);
+            return Err(DmaError::AlreadyMapped.into());
         }
         // Ensure that the addresses used later will not overflow
         start_paddr.checked_add(frame_count * PAGE_SIZE).unwrap();
@@ -137,7 +137,7 @@ impl DmaStream {
     /// is coherent with DRAM before device access or after device write‑back.
     pub fn sync(&self, byte_range: Range<usize>) -> Result<(), Error> {
         if byte_range.end > self.nbytes() {
-            return Err(Error::InvalidArgs);
+            return Err(Error::InvalidArgs.into());
         }
         if self.inner.is_cache_coherent {
             return Ok(()); // No CPU‑side work needed on coherent platforms.
@@ -227,7 +227,7 @@ impl VmIo for DmaStream {
     /// Reads data into the buffer.
     fn read(&self, offset: usize, writer: &mut VmWriter) -> Result<(), Error> {
         if self.inner.direction == DmaDirection::ToDevice {
-            return Err(Error::AccessDenied);
+            return Err(Report::new(Error::AccessDenied));
         }
         self.inner.segment.read(offset, writer)
     }
@@ -235,7 +235,7 @@ impl VmIo for DmaStream {
     /// Writes data from the buffer.
     fn write(&self, offset: usize, reader: &mut VmReader) -> Result<(), Error> {
         if self.inner.direction == DmaDirection::FromDevice {
-            return Err(Error::AccessDenied);
+            return Err(Report::new(Error::AccessDenied));
         }
         self.inner.segment.write(offset, reader)
     }
@@ -245,7 +245,7 @@ impl<'a> DmaStream {
     /// Returns a reader to read data from it.
     pub fn reader(&'a self) -> Result<VmReader<'a, Infallible>, Error> {
         if self.inner.direction == DmaDirection::ToDevice {
-            return Err(Error::AccessDenied);
+            return Err(Report::new(Error::AccessDenied));
         }
         Ok(self.inner.segment.reader())
     }
@@ -253,7 +253,7 @@ impl<'a> DmaStream {
     /// Returns a writer to write data into it.
     pub fn writer(&'a self) -> Result<VmWriter<'a, Infallible>, Error> {
         if self.inner.direction == DmaDirection::FromDevice {
-            return Err(Error::AccessDenied);
+            return Err(Report::new(Error::AccessDenied));
         }
         Ok(self.inner.segment.writer())
     }
@@ -347,14 +347,14 @@ impl<Dma: AsRef<DmaStream>> DmaStreamSlice<Dma> {
 impl<Dma: AsRef<DmaStream> + Send + Sync> VmIo for DmaStreamSlice<Dma> {
     fn read(&self, offset: usize, writer: &mut VmWriter) -> Result<(), Error> {
         if writer.avail() + offset > self.len {
-            return Err(Error::InvalidArgs);
+            return Err(Report::new(Error::InvalidArgs));
         }
         self.stream.as_ref().read(self.offset + offset, writer)
     }
 
     fn write(&self, offset: usize, reader: &mut VmReader) -> Result<(), Error> {
         if reader.remain() + offset > self.len {
-            return Err(Error::InvalidArgs);
+            return Err(Report::new(Error::InvalidArgs));
         }
         self.stream.as_ref().write(self.offset + offset, reader)
     }

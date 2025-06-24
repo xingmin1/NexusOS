@@ -83,7 +83,7 @@ impl VirtAddrAllocator {
         if let Some(range) = allocate_range {
             Ok(range)
         } else {
-            Err(Error::KVirtAreaAllocError)
+            Err(Error::KVirtAreaAllocError.into())
         }
     }
 

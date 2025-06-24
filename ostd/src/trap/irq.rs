@@ -48,7 +48,7 @@ impl IrqLine {
         if irq::is_slot_empty(irq) {
             Ok(Self::new(irq, SourceKind::External))
         } else {
-            Err(Error::NotEnoughResources)
+            Err(Error::NotEnoughResources.into())
         }
     }
 
@@ -56,7 +56,7 @@ impl IrqLine {
     pub fn alloc_software() -> Result<Self> {
         irq::alloc_soft_irq()
             .map(|n| Self::new(n, SourceKind::Software))
-            .ok_or(Error::NotEnoughResources)
+            .ok_or(Error::NotEnoughResources.into())
     }
 
     // /// Allocates an available IRQ line.

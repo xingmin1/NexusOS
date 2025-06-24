@@ -72,7 +72,7 @@ impl MmioCommonDevice {
     /// Version of the MMIO device.
     pub fn read_version(&self) -> Result<VirtioMmioVersion> {
         VirtioMmioVersion::try_from(self.io_mem.read_once::<u32>(4)?)
-            .map_err(|_| Error::InvalidArgs)
+            .map_err(|_| Error::InvalidArgs.into())
     }
 
     /// Interrupt line

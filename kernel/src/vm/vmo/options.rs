@@ -8,6 +8,7 @@ use alloc::sync::Arc;
 
 use align_ext::AlignExt;
 use aster_rights::{Rights, TRightSet, TRights};
+use nexus_error::ostd_error_to_errno;
 use ostd::{
     collections::xarray::XArray,
     mm::{FrameAllocOptions, UFrame, USegment, PAGE_SIZE},
@@ -144,7 +145,7 @@ fn committed_pages_if_continuous(flags: VmoFlags, size: usize) -> Result<XArray<
     if flags.contains(VmoFlags::CONTIGUOUS) {
         // if the vmo is continuous, we need to allocate frames for the vmo
         let frames_num = size / PAGE_SIZE;
-        let segment: USegment = FrameAllocOptions::new().alloc_segment(frames_num)?.into();
+        let segment: USegment = FrameAllocOptions::new().alloc_segment(frames_num).map_err(ostd_error_to_errno)?.into();
         let mut committed_pages = XArray::new();
         let mut cursor = committed_pages.cursor_mut(0);
         for frame in segment {

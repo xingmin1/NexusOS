@@ -69,6 +69,8 @@ use core::{
     any::TypeId, marker::PhantomData, mem::ManuallyDrop, ops::Range, sync::atomic::Ordering,
 };
 
+use error_stack::Result;
+
 use align_ext::AlignExt;
 
 use super::{
@@ -150,10 +152,10 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
     /// virtual address range. The accesses using this cursor may block or fail.
     pub fn new(pt: &'a PageTable<M, E, C>, va: &Range<Vaddr>) -> Result<Self, PageTableError> {
         if !M::covers(va) || va.is_empty() {
-            return Err(PageTableError::InvalidVaddrRange(va.start, va.end));
+            return Err(PageTableError::InvalidVaddrRange(va.start, va.end).into());
         }
         if va.start % C::BASE_PAGE_SIZE != 0 || va.end % C::BASE_PAGE_SIZE != 0 {
-            return Err(PageTableError::UnalignedVaddr);
+            return Err(PageTableError::UnalignedVaddr.into());
         }
 
         const { assert!(C::NR_LEVELS as usize <= MAX_NR_LEVELS) };
@@ -217,7 +219,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
     /// Gets the information of the current slot.
     pub fn query(&mut self) -> Result<PageTableItem, PageTableError> {
         if self.va >= self.barrier_va.end {
-            return Err(PageTableError::InvalidVaddr(self.va));
+            return Err(PageTableError::InvalidVaddr(self.va).into());
         }
 
         loop {
@@ -273,7 +275,7 @@ impl<'a, M: PageTableMode, E: PageTableEntryTrait, C: PagingConstsTrait> Cursor<
     pub fn jump(&mut self, va: Vaddr) -> Result<(), PageTableError> {
         assert!(va % C::BASE_PAGE_SIZE == 0);
         if !self.barrier_va.contains(&va) {
-            return Err(PageTableError::InvalidVaddr(va));
+            return Err(PageTableError::InvalidVaddr(va).into());
         }
 
         loop {

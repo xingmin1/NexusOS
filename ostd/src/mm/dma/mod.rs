@@ -3,10 +3,11 @@
 mod dma_coherent;
 mod dma_stream;
 
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, fmt};
 
 pub use dma_coherent::DmaCoherent;
 pub use dma_stream::{DmaDirection, DmaStream, DmaStreamSlice};
+use error_stack::Context;
 use inherit_methods_macro::inherit_methods;
 use spin::Once;
 
@@ -32,6 +33,14 @@ pub enum DmaError {
     InvalidArgs,
     AlreadyMapped,
 }
+
+impl fmt::Display for DmaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DmaError: {:?}", self)
+    }
+}
+
+impl Context for DmaError {}
 
 /// A trait for types that have mapped address in the device address space.
 pub trait HasDaddr {

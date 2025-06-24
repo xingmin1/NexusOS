@@ -73,7 +73,7 @@ impl CapabilityVndrData {
     #[inline]
     fn check_range(&self, offset: u16) -> Result<()> {
         if self.length < offset {
-            return Err(Error::InvalidArgs);
+            return Err(Error::InvalidArgs.into());
         }
         Ok(())
     }

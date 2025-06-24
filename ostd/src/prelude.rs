@@ -5,7 +5,7 @@
 /// A specialized [`Result`] type for this crate.
 ///
 /// [`Result`]: core::result::Result
-pub type Result<T> = core::result::Result<T, crate::error::Error>;
+pub type Result<T> = error_stack::Result<T, crate::error::Error>;
 
 pub(crate) use alloc::{boxed::Box, sync::Arc, vec::Vec};
 

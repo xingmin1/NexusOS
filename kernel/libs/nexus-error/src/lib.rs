@@ -4,10 +4,10 @@
 
 pub use error_stack;
 
-use alloc::fmt;
+use alloc::{fmt, format};
 
 extern crate alloc;
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = error_stack::Result<T, Error>;
 
 /// Error number.
 #[repr(i32)]
@@ -365,6 +365,35 @@ impl From<ostd::Error> for Error {
     }
 }
 
+#[track_caller]
+pub fn ostd_error_to_errno(ostd_error: error_stack::Report<ostd::Error>) -> error_stack::Report<Error> {
+    let error = ostd_error.downcast_ref::<ostd::Error>().expect("Can not convert ostd::Error to Error");
+    let error = (*error).into();
+    ostd_error.change_context(error)
+}
+
+#[track_caller]
+pub fn errno_to_ostd_error(errno: error_stack::Report<Error>) -> error_stack::Report<ostd::Error> {
+    let error = errno.downcast_ref::<Error>().expect("Can not convert Error to ostd::Error");
+    let error = match error.errno {
+        Errno::EFAULT => ostd::Error::AccessDenied,
+        Errno::ENOMEM => ostd::Error::NoMemory,
+        Errno::EINVAL => ostd::Error::InvalidArgs,
+        Errno::EIO => ostd::Error::IoError,
+        Errno::EBUSY => ostd::Error::NotEnoughResources,
+        Errno::EOVERFLOW => ostd::Error::Overflow,
+        _ => ostd::Error::InvalidArgs,
+    };
+    errno.change_context(error)
+}
+
+#[track_caller]
+pub fn ostd_tuple_to_errno(ostd_tuple: (ostd::Error, usize)) -> error_stack::Report<Error> {
+    let (ostd_error, _) = ostd_tuple;
+    let error: Error = ostd_error.into();
+    error_stack::Report::new(error).attach_printable(format!("ostd_tuple: {:?}", ostd_tuple))
+}
+
 impl From<(ostd::Error, usize)> for Error {
     // Used in fallible memory read/write API
     fn from(ostd_error: (ostd::Error, usize)) -> Self {
@@ -499,7 +528,9 @@ macro_rules! return_errno {
 #[macro_export]
 macro_rules! return_errno_with_message {
     ($errno: expr, $message: expr) => {
-        return Err($crate::Error::with_message($errno, $message))
+        return Err($crate::error_stack::Report::new(
+            $crate::Error::with_message($errno, $message)
+        ))
     };
 }
 

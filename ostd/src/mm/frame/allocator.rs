@@ -4,6 +4,7 @@
 
 use align_ext::AlignExt;
 use buddy_system_allocator::FrameAllocator;
+use error_stack::Report;
 use log::info;
 use spin::Once;
 
@@ -91,7 +92,7 @@ impl FrameAllocOptions {
         F: FnMut(Paddr) -> M,
     {
         if nframes == 0 {
-            return Err(Error::InvalidArgs);
+            return Err(Error::InvalidArgs.into());
         }
         let segment = FRAME_ALLOCATOR
             .get()
@@ -106,7 +107,7 @@ impl FrameAllocOptions {
                 )
                 .unwrap()
             })
-            .ok_or(Error::NoMemory)?;
+            .ok_or(Report::new(Error::NoMemory))?;
 
         if self.zeroed {
             let addr = paddr_to_vaddr(segment.start_paddr()) as *mut u8;

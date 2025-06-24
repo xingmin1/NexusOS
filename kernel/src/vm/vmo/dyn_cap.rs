@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use alloc::sync::Arc;
+use nexus_error::errno_to_ostd_error;
 use core::ops::Range;
 
 use aster_rights::{Rights, TRights};
@@ -143,16 +144,16 @@ impl Vmo<Rights> {
 
 impl VmIo for Vmo<Rights> {
     fn read(&self, offset: usize, writer: &mut VmWriter) -> ostd::Result<()> {
-        self.check_rights(Rights::READ)?;
+        self.check_rights(Rights::READ).map_err(errno_to_ostd_error)?;
         // TODO: 改为异步实现
-        self.0.read(offset, writer).block()?;
+        self.0.read(offset, writer).block().map_err(errno_to_ostd_error)?;
         Ok(())
     }
 
     fn write(&self, offset: usize, reader: &mut VmReader) -> ostd::Result<()> {
-        self.check_rights(Rights::WRITE)?;
+        self.check_rights(Rights::WRITE).map_err(errno_to_ostd_error)?;
         // TODO: 改为异步实现
-        self.0.write(offset, reader).block()?;
+        self.0.write(offset, reader).block().map_err(errno_to_ostd_error)?;
         Ok(())
     }
     // TODO: Support efficient `write_vals()`

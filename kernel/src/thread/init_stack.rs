@@ -1,4 +1,5 @@
 use alloc::{collections::btree_map::BTreeMap, ffi::CString, sync::Arc, vec::Vec};
+use nexus_error::ostd_error_to_errno;
 use core::{
     mem,
     sync::atomic::{AtomicUsize, Ordering},
@@ -243,7 +244,7 @@ impl InitStackWriter {
     fn write_u64(&self, val: u64) -> Result<u64> {
         let start_address = (self.pos() - 8).align_down(8);
         self.pos.store(start_address, Ordering::Relaxed);
-        self.vmo.write_val(start_address - self.map_addr, &val)?;
+        self.vmo.write_val(start_address - self.map_addr, &val).map_err(ostd_error_to_errno)?;
         Ok(self.pos() as u64)
     }
 
@@ -260,7 +261,7 @@ impl InitStackWriter {
         let len = bytes.len();
         self.pos.fetch_sub(len, Ordering::Relaxed);
         let pos = self.pos();
-        self.vmo.write_bytes(pos - self.map_addr, bytes)?;
+        self.vmo.write_bytes(pos - self.map_addr, bytes).map_err(ostd_error_to_errno)?;
         Ok(pos as u64)
     }
 

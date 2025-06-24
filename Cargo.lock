@@ -2027,6 +2027,7 @@ dependencies = [
  "buddy_system_allocator",
  "cfg-if",
  "crossbeam-queue",
+ "error-stack",
  "fdt",
  "gimli 0.28.1",
  "iced-x86",

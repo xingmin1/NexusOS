@@ -8,6 +8,9 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use alloc::fmt;
+use error_stack::{Context, Result};
+
 use super::{
     nr_subpage_per_huge, page_prop::PageProperty, page_size, Paddr, PagingConstsTrait, PagingLevel,
     PodOnce, Vaddr,
@@ -36,6 +39,14 @@ pub enum PageTableError {
     /// Using virtual address not aligned.
     UnalignedVaddr,
 }
+
+impl fmt::Display for PageTableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PageTableError: {:?}", self)
+    }
+}
+
+impl Context for PageTableError {}
 
 /// This is a compile-time technique to force the frame developers to distinguish
 /// between the kernel global page table instance, process specific user page table

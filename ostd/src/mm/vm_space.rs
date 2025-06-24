@@ -11,6 +11,8 @@
 
 use core::{ops::Range, sync::atomic::Ordering};
 
+use error_stack::ResultExt;
+
 use crate::{
     arch::mm::{
         current_page_table_paddr, tlb_flush_all_excluding_global, PageTableEntry, PagingConsts,
@@ -104,7 +106,7 @@ impl VmSpace {
     /// The creation of the cursor may block if another cursor having an
     /// overlapping range is alive.
     pub fn cursor(&self, va: &Range<Vaddr>) -> Result<Cursor<'_>> {
-        Ok(self.pt.cursor(va).map(Cursor)?)
+        Ok(self.pt.cursor(va).map(Cursor).change_context(Error::AccessDenied)?)
     }
 
     /// Gets an mutable cursor in the virtual address range.
@@ -126,7 +128,7 @@ impl VmSpace {
                 activation_lock,
                 flusher: TlbFlusher::new(self.cpus.load(), disable_preempt()),
             }
-        })?)
+        }).change_context(Error::AccessDenied)?)
     }
 
     /// Activates the page table on the current CPU.
@@ -183,11 +185,11 @@ impl VmSpace {
     /// or the `vaddr` and `len` do not represent a user space memory range.
     pub fn reader(&self, vaddr: Vaddr, len: usize) -> Result<VmReader<'_, Fallible>> {
         if current_page_table_paddr() != unsafe { self.pt.root_paddr() } {
-            return Err(Error::AccessDenied);
+            return Err(Error::AccessDenied.into());
         }
 
         if vaddr.checked_add(len).unwrap_or(usize::MAX) > MAX_USERSPACE_VADDR {
-            return Err(Error::AccessDenied);
+            return Err(Error::AccessDenied.into());
         }
 
         // `VmReader` is neither `Sync` nor `Send`, so it will not live longer than the current
@@ -204,11 +206,11 @@ impl VmSpace {
     /// or the `vaddr` and `len` do not represent a user space memory range.
     pub fn writer(&self, vaddr: Vaddr, len: usize) -> Result<VmWriter<'_, Fallible>> {
         if current_page_table_paddr() != unsafe { self.pt.root_paddr() } {
-            return Err(Error::AccessDenied);
+            return Err(Error::AccessDenied.into());
         }
 
         if vaddr.checked_add(len).unwrap_or(usize::MAX) > MAX_USERSPACE_VADDR {
-            return Err(Error::AccessDenied);
+            return Err(Error::AccessDenied.into());
         }
 
         // `VmWriter` is neither `Sync` nor `Send`, so it will not live longer than the current
@@ -273,12 +275,12 @@ impl Cursor<'_> {
     ///
     /// This function won't bring the cursor to the next slot.
     pub fn query(&mut self) -> Result<VmItem> {
-        Ok(self.0.query().map(|item| item.try_into().unwrap())?)
+        Ok(self.0.query().map(|item| item.try_into().unwrap()).change_context(Error::AccessDenied)?)
     }
 
     /// Jump to the virtual address.
     pub fn jump(&mut self, va: Vaddr) -> Result<()> {
-        self.0.jump(va)?;
+        self.0.jump(va).change_context(Error::AccessDenied)?;
         Ok(())
     }
 
@@ -311,14 +313,15 @@ impl CursorMut<'_, '_> {
         Ok(self
             .pt_cursor
             .query()
-            .map(|item| item.try_into().unwrap())?)
+            .map(|item| item.try_into().unwrap())
+            .change_context(Error::AccessDenied)?)
     }
 
     /// Jump to the virtual address.
     ///
     /// This is the same as [`Cursor::jump`].
     pub fn jump(&mut self, va: Vaddr) -> Result<()> {
-        self.pt_cursor.jump(va)?;
+        self.pt_cursor.jump(va).change_context(Error::AccessDenied)?;
         Ok(())
     }
 

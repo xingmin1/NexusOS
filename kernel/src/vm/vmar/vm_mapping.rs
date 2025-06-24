@@ -7,6 +7,7 @@ use core::{
 };
 
 use align_ext::AlignExt;
+use nexus_error::ostd_error_to_errno;
 use ostd::mm::{
     tlb::TlbFlushOp, vm_space::VmItem, CachePolicy, FrameAllocOptions, PageFlags, PageProperty,
     PrivilegedPageFlags, UFrame, Vaddr, VmSpace, PAGE_SIZE,
@@ -149,7 +150,7 @@ impl VmMapping {
         }
 
         let mut cursor =
-            vm_space.cursor_mut(&(page_aligned_addr..page_aligned_addr + PAGE_SIZE))?;
+            vm_space.cursor_mut(&(page_aligned_addr..page_aligned_addr + PAGE_SIZE)).map_err(ostd_error_to_errno)?;
 
         match cursor.query().unwrap() {
             VmItem::Mapped {
@@ -224,14 +225,14 @@ impl VmMapping {
     async fn prepare_page(&self, page_fault_addr: Vaddr, write: bool) -> Result<(UFrame, bool)> {
         let mut is_readonly = false;
         let Some(vmo) = &self.vmo else {
-            return Ok((FrameAllocOptions::new().alloc_frame()?.into(), is_readonly));
+            return Ok((FrameAllocOptions::new().alloc_frame().map_err(ostd_error_to_errno)?.into(), is_readonly));
         };
 
         let page_offset = page_fault_addr.align_down(PAGE_SIZE) - self.map_to_addr;
         let Ok(page) = vmo.get_committed_frame(page_offset).await else {
             if !self.is_shared {
                 // The page index is outside the VMO. This is only allowed in private mapping.
-                return Ok((FrameAllocOptions::new().alloc_frame()?.into(), is_readonly));
+                return Ok((FrameAllocOptions::new().alloc_frame().map_err(ostd_error_to_errno)?.into(), is_readonly));
             } else {
                 return_errno_with_message!(
                     Errno::EFAULT,
@@ -272,7 +273,7 @@ impl VmMapping {
         );
 
         let vm_perms = self.perms - VmPerms::WRITE;
-        let mut cursor = vm_space.cursor_mut(&(start_addr..end_addr))?;
+        let mut cursor = vm_space.cursor_mut(&(start_addr..end_addr)).map_err(ostd_error_to_errno)?;
         let operate = move |commit_fn: &mut dyn FnMut() -> Result<UFrame>| {
             if let VmItem::NotMapped { .. } = cursor.query().unwrap() {
                 // We regard all the surrounding pages as accessed, no matter
@@ -397,7 +398,7 @@ impl VmMapping {
     /// Unmaps the mapping from the VM space.
     pub(super) fn unmap(self, vm_space: &VmSpace) -> Result<()> {
         let range = self.range();
-        let mut cursor = vm_space.cursor_mut(&range)?;
+        let mut cursor = vm_space.cursor_mut(&range).map_err(ostd_error_to_errno)?;
         cursor.unmap(range.len());
 
         Ok(())

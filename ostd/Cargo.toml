@@ -45,6 +45,7 @@ tracing = { version = "0.1", default-features = false, features = ["attributes"]
 tracing-core = { version = "0.1", default-features = false }
 arrayvec = { version = "0.7.6", default-features = false }
 virtio-drivers = { path = "libs/virtio-drivers", version = "0.11.0" }
+error-stack = { version = "0.5", default-features = false }
 
 [target.x86_64-unknown-none.dependencies]
 x86_64 = "0.14.13"

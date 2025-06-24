@@ -68,6 +68,16 @@ impl GetThreadLocalData for CurrentTask {
     }
 }
 
+#[macro_export]
+macro_rules! current_thread_data {
+    () => {
+        {
+            let task = ostd::task::Task::current().expect("current task is not found");
+            $crate::thread::GetThreadLocalData::get_thread_local_data(&task).expect("thread data is not found")
+        }
+    }
+}
+
 pub struct ThreadBuilder {}
 
 impl ThreadBuilder {

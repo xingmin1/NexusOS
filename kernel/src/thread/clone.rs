@@ -1,7 +1,7 @@
 //! clone  — 按 CLONE_THREAD 分治创建“线程”或“进程”。
 
 
-use alloc::{sync::Arc, vec};
+use alloc::{sync::{Arc, Weak}, vec};
 
 use bitflags::bitflags;
 use nexus_error::{return_errno_with_message, Errno, Result};
@@ -90,6 +90,7 @@ async fn clone_thread(
     };
 
     spawn_child(
+        parent.shared_info.parent.clone(),
         parent,
         uc,
         child_vm,
@@ -98,6 +99,7 @@ async fn clone_thread(
         flags,
         child_stack,
         tls,
+        false,
     )
     .await
 }
@@ -133,7 +135,14 @@ async fn clone_process(
         parent.fd_table.dup_table().await
     };
 
+    let parent_process = if flags.contains(CloneFlags::CLONE_PARENT) {
+        parent.shared_info.parent.clone()
+    } else {
+        Arc::downgrade(&parent.shared_info)
+    };
+
     spawn_child(
+        parent_process,
         parent,
         uc,
         child_vm,
@@ -142,13 +151,15 @@ async fn clone_process(
         flags,
         child_stack,
         tls,
+        true,
     )
     .await
 }
 
 // 公共：真正生成并调度子 Task  
 async fn spawn_child(
-    parent: &mut ThreadState,
+    parent_process: Weak<ThreadSharedInfo>,
+    parent_thread: &mut ThreadState,
     _uc: &mut UserContext,
     child_vm: Arc<ProcessVm>,
     tgroup: Arc<ThreadGroup>,
@@ -156,20 +167,21 @@ async fn spawn_child(
     flags: CloneFlags,
     child_stack: usize,
     tls: usize,
+    is_child_process: bool,
 ) -> Result<u64> {
     let new_tid = id::alloc();
 
     // ThreadSharedInfo 
     let child_shared = Arc::new(ThreadSharedInfo {
         tid: new_tid,
-        parent: Arc::downgrade(&parent.shared_info),
+        parent: parent_process,
         children: GuardRwArc::new(vec![]),
-        lifecycle: parent.shared_info.lifecycle.clone(),
+        lifecycle: parent_thread.shared_info.lifecycle.clone(),
     });
     tgroup.attach(child_shared.clone());
 
     // 用户上下文 
-    let user_space = parent.task.user_space().unwrap().clone();
+    let user_space = parent_thread.task.user_space().unwrap().clone();
     let mut child_uc = user_space.user_mode().context().clone();
     child_uc.set_syscall_return_value(0); // 子线程/进程得 0
     if child_stack != 0 {
@@ -196,10 +208,14 @@ async fn spawn_child(
         task: child_task.clone(),
         thread_group: tgroup.clone(),
         process_vm: child_vm,
-        shared_info: child_shared,
+        shared_info: child_shared.clone(),
         fd_table,
-        user_brk: parent.user_brk,
+        user_brk: parent_thread.user_brk,
     };
+
+    if is_child_process && let Some(parent_process) = child_shared.parent.upgrade() {
+        parent_process.children.write().push(child_shared);
+    }
 
     // 调度 
     child_task.run(task_future(child_ts));

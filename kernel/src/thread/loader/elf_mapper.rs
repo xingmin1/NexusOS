@@ -12,7 +12,7 @@ use elf_loader::{
 };
 use nexus_error::{error_stack::Report, ostd_error_to_errno, Errno};
 use ostd::mm::{Vaddr, VmIo, PAGE_SIZE};
-use alloc::{ffi::CString, format, vec::Vec};
+use alloc::{borrow::ToOwned, ffi::CString, format, vec::Vec};
 
 pub struct ElfLoadInfo {
     pub entry: Vaddr,
@@ -26,13 +26,15 @@ pub struct ElfMapper<'a> {
 
 impl<'a> ElfMapper<'a> {
     pub async fn map(self, argv: Vec<CString>, envp: Vec<CString>) -> Result<ElfLoadInfo> {
-        let mut loader = Loader::<MmapImpl>::new();
+        let (ehdr, phdrs) = {
+            let mut loader = Loader::<MmapImpl>::new();
+            let mut binary = self.image.as_binary();
 
-        let mut binary = self.image.as_binary();
-
-        // 解析 ELF Header / PHDR
-        let ehdr  = loader.read_ehdr(&mut binary).map_err(elf_loader_error_to_errno)?;
-        let phdrs = loader.read_phdr(&mut binary, &ehdr).map_err(elf_loader_error_to_errno)?;
+            // 解析 ELF Header / PHDR
+            let ehdr = loader.read_ehdr(&mut binary).map_err(elf_loader_error_to_errno)?.to_owned();
+            let phdrs = loader.read_phdr(&mut binary, &ehdr).map_err(elf_loader_error_to_errno)?.to_owned();
+            (ehdr, phdrs)
+        };
 
         for ph in phdrs.iter().filter(|p| p.p_type == PT_LOAD) {
             self.map_segment(ph).await?;

@@ -7,6 +7,10 @@ pub mod clone;
 pub mod thread_group;
 pub mod fd_table;
 pub mod exit;
+pub mod wait;
+pub mod execve;
+pub mod get_ppid;
+pub mod get_pid;
 
 use alloc::{
     ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
@@ -206,9 +210,10 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
                     debug!("处理系统调用，系统调用号: {}", user_context.syscall_number());
                     let res = syscall(&mut thread_state, user_context).await;
                     match res {
-                        Ok(ControlFlow::Continue(ret)) => {
+                        Ok(ControlFlow::Continue(Some(ret))) => {
                             user_context.set_syscall_return_value(ret as _);
                         }
+                        Ok(ControlFlow::Continue(None)) => {}
                         Ok(ControlFlow::Break(code)) => {
                             break code;
                         }
@@ -222,11 +227,14 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
                     if let Ok(page_fault_info) =
                         PageFaultInfo::try_from(user_context.trap_information())
                     {
-                        let _ = handle_page_fault_from_vmar(
+                        if handle_page_fault_from_vmar(
                             &thread_state.process_vm.root_vmar(),
                             &page_fault_info,
                         )
-                        .block();
+                        .block()
+                        .is_err() {
+                            error!("处理页错误失败");
+                        }
                     }
                 }
             }

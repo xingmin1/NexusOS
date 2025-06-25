@@ -37,6 +37,15 @@ pub struct InitStack {
 /// Set the initial stack size to 8 megabytes, following the default Linux stack size limit.
 pub const INIT_STACK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
 
+/// The max number of arguments that can be used to creating a new process.
+pub const MAX_ARGV_NUMBER: usize = 128;
+/// The max number of environmental variables that can be used to creating a new process.
+pub const MAX_ENVP_NUMBER: usize = 128;
+/// The max length of each argument to create a new process.
+pub const MAX_ARG_LEN: usize = 2048;
+/// The max length of each environmental variable (the total length of key-value pair) to create a new process.
+pub const MAX_ENV_LEN: usize = 128;
+
 impl InitStack {
     pub fn new() -> Self {
         let nr_pages_padding = {

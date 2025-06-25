@@ -37,6 +37,10 @@ impl ThreadGroup {
     pub fn members(&self) -> &GuardRwArc<Vec<Arc<ThreadSharedInfo>>> {
         &self.members
     }
+
+    pub fn leader(&self) -> Arc<ThreadSharedInfo> {
+        self.members.read().first().unwrap().clone()
+    }
 }
 
 /// 为 *fork*（非 CLONE_THREAD）预留：生成新 thread‑group id。

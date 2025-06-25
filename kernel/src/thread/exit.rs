@@ -1,10 +1,10 @@
-//! exit/exit_group 实现
+use core::ops::ControlFlow;
 
 use alloc::sync::Arc;
+use nexus_error::Result;
 use ostd::user::UserContextApi;
-use crate::thread::{ThreadState, ThreadSharedInfo};
+use crate::thread::ThreadState;
 use crate::vm::ProcessVm;
-use ostd::task::Task;
 use tracing::info;
 
 /// 终结当前线程或线程组
@@ -12,7 +12,7 @@ pub async fn do_exit(
     state: &mut ThreadState,
     uc: &mut ostd::cpu::UserContext,
     group_exit: bool,
-) -> ! {
+) -> Result<ControlFlow<i32, Option<isize>>> {
     let code = uc.syscall_arguments()[0] as i32 & 0xff;
 
     if group_exit {
@@ -27,13 +27,9 @@ pub async fn do_exit(
     // 如果当前 Task 是最后一个活跃者，回收地址空间
     maybe_reap_process(state.process_vm.clone(), state.thread_group.clone()).await;
 
-    // 从调度队列删除自身；永不返回
-    let current = Task::current().expect("no current task");
     info!(tid = state.shared_info.tid, "thread exit, code = {}", code);
-    // current.cancel();
-    loop {
-        core::hint::spin_loop();
-    }
+
+    Ok(ControlFlow::Break(code))
 }
 
 /// 若线程组全为 zombie，则释放 VM 与 FD

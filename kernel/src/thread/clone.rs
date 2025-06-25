@@ -43,7 +43,7 @@ bitflags! {
 
 /// clone 入口：由 syscall 调起  
 /// 返回父进程视角下的新 tid；子线程/进程在返回点得 0。  
-pub async fn do_clone(parent: &mut ThreadState, uc: &mut UserContext) -> Result<ControlFlow<i32, isize>> {
+pub async fn do_clone(parent: &mut ThreadState, uc: &mut UserContext) -> Result<ControlFlow<i32, Option<isize>>> {
     let [raw_flags, child_stack, tls, _parent_tidptr, _child_tidptr, _] = uc.syscall_arguments();
     let flags = CloneFlags::from_bits_truncate(raw_flags as u64);
 
@@ -69,7 +69,7 @@ pub async fn do_clone(parent: &mut ThreadState, uc: &mut UserContext) -> Result<
 
     // 父进程返回 new_tid；子在自身上下文里已置 0
     uc.set_syscall_return_value(new_tid as _);
-    Ok(ControlFlow::Continue(new_tid as isize))
+    Ok(ControlFlow::Continue(Some(new_tid as isize)))
 }
 
 // 线程克隆
@@ -140,7 +140,7 @@ async fn clone_process(
     let parent_process = if flags.contains(CloneFlags::CLONE_PARENT) {
         parent.shared_info.parent.clone()
     } else {
-        Arc::downgrade(&parent.shared_info)
+        Arc::downgrade(&parent.thread_group.leader())
     };
 
     spawn_child(

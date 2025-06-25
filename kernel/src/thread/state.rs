@@ -1,7 +1,6 @@
 use core::{
     sync::atomic::{AtomicI32, AtomicU8, Ordering},
 };
-use alloc::sync::Arc;
 use ostd::sync::WaitQueue;
 
 /// 线程可观察到的生命周期状态
@@ -16,7 +15,7 @@ pub enum LifeState {
 pub struct Lifecycle {
     state:           AtomicU8,     // LifeState
     exit_code:       AtomicI32,    // 正常退出码或信号编码
-    exit_wait_queue: Arc<WaitQueue>,    // 供父线程 wait4
+    exit_wait_queue: WaitQueue,    // 供父线程 wait4
 }
 
 impl Lifecycle {
@@ -24,7 +23,7 @@ impl Lifecycle {
         Self {
             state:     AtomicU8::new(LifeState::Running as u8),
             exit_code: AtomicI32::new(0),
-            exit_wait_queue: Arc::new(WaitQueue::new()),
+            exit_wait_queue: WaitQueue::new(),
         }
     }
 
@@ -40,7 +39,7 @@ impl Lifecycle {
         if self.state.load(Ordering::Acquire) == LifeState::Zombie as u8 {
             return self.exit_code.load(Ordering::Acquire);
         }
-        self.exit_wait_queue.wait().await;
+        let _ = self.exit_wait_queue.wait().await;
         self.exit_code.load(Ordering::Acquire)
     }
 
@@ -56,7 +55,7 @@ impl Clone for Lifecycle {
         Self {
             state:     AtomicU8::new(state),
             exit_code: AtomicI32::new(exit_code),
-            exit_wait_queue: self.exit_wait_queue.clone(),
+            exit_wait_queue: WaitQueue::new(),
         }
     }
 }

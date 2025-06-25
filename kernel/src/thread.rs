@@ -24,7 +24,7 @@ use ostd::{
 };
 use tracing::{debug, error, info,};
 
-use crate::{error::Result, syscall::syscall, thread::{fd_table::FdTable, state::Lifecycle, thread_group::ThreadGroup}, vm::ProcessVm};
+use crate::{error::Result, syscall::syscall, thread::{fd_table::{FdTable, StdIoSource}, state::Lifecycle, thread_group::ThreadGroup}, vm::ProcessVm};
 
 #[derive(Clone)]
 pub struct ThreadSharedInfo {
@@ -133,13 +133,14 @@ impl<'a> ThreadBuilder<'a> {
             process_vm: process_vm.clone(),
         };
         let task = Arc::new(user_task_options.local_data(thread_local_data).build());
+        let fd_table = FdTable::with_stdio(0, None, Some(StdIoSource::Serial), None).await?;
         let thread_state = ThreadState {
             task: task.clone(),
             thread_group: thread_group.clone(),
             process_vm: process_vm.clone(),
             shared_info: thread_shared_info.clone(),
             user_brk: 0,
-            fd_table: Arc::new(FdTable::new(0)),
+            fd_table,
         };
 
         let _join_handle = task.run(task_future(thread_state));

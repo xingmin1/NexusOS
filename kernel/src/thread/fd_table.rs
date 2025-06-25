@@ -13,7 +13,7 @@ use core::{
 use bitflags::bitflags;
 use ostd::sync::RwLock;
 
-use vfs::{SDirHandle, SFileHandle};
+use vfs::{FileOpen, PathBuf, SDirHandle, SFileHandle};
 
 bitflags! {
     #[derive(Default, Clone, Copy, Debug)]
@@ -49,6 +49,19 @@ impl FdEntry {
     }
 }
 
+pub const STDIN:  u32 = 0;
+pub const STDOUT: u32 = 1;
+pub const STDERR: u32 = 2;
+
+pub enum StdIoSource {
+    Null,          // /dev/null，一般用于守护进程
+    Console,       // /dev/console 或首个 tty
+    Serial,        // /dev/serial
+    Path(&'static str, FileOpen), // 任意路径 + 打开标志
+    Preopened(SFileHandle, FileOpen), // 已经创建好的句柄
+}
+
+
 /// 默认最大同时打开文件数（软上限）
 const OPEN_MAX: usize = 1 << 20; // 约 1 M，后续可由 RLIMIT_NOFILE 替代
 
@@ -66,6 +79,42 @@ impl FdTable {
             next:     AtomicU32::new(0),
             capacity: if capacity == 0 { OPEN_MAX } else { capacity },
         }
+    }
+
+    /// 创建并填充 0/1/2；其余逻辑与 `new()` 相同
+    pub async fn with_stdio(
+        max_fd: usize,
+        stdin_src:  Option<StdIoSource>,
+        stdout_src: Option<StdIoSource>,
+        stderr_src: Option<StdIoSource>,
+    ) -> Result<Arc<Self>> {
+        let tbl = Arc::new(Self::new(max_fd));
+        if let Some(src) = stdin_src {
+            tbl.fill_std(STDIN,  src).await?;
+        }
+        if let Some(src) = stdout_src {
+            tbl.fill_std(STDOUT, src).await?;
+        }
+        if let Some(src) = stderr_src {
+            tbl.fill_std(STDERR, src).await?;
+        }
+        Ok(tbl)
+    }
+
+    async fn fill_std(&self, fd: u32, src: StdIoSource) -> Result<()> {
+        // 将不同来源统一转换成句柄
+        let (handle, default_flags) = match src {
+            StdIoSource::Null => open_path("/dev/null", fd == STDIN).await?,
+            StdIoSource::Console => open_path("/dev/console", fd == STDIN).await?,
+            StdIoSource::Serial => open_path("/dev/serial", fd == STDIN).await?,
+            StdIoSource::Path(p, fo) => open_path(p, fo.access().is_readable()).await?,
+            StdIoSource::Preopened(h, _) => (h, FdFlags::empty()),
+        };
+        // 直接写表，不走 alloc_fd，避免冲突
+        let mut w = self.map.write().await;
+        w.insert(fd, FdEntry::new(FdObject::File(Arc::new(handle)), default_flags));
+        self.next.fetch_max(3, Ordering::Relaxed); // 以后分配从 3 开始
+        Ok(())
     }
 
     /// 为 `entry` 分配描述符；`min_fd` 为搜索起点
@@ -182,4 +231,20 @@ impl FdTable {
             self.next.store(0, Ordering::Relaxed);
         }
     }
+}
+
+
+async fn open_path(path: &str, read_only: bool)
+        -> Result<(SFileHandle, FdFlags)> {
+    use vfs::{get_path_resolver, FileOpenBuilder};
+
+    let mut p = PathBuf::new(path)?;
+    let vnode  = get_path_resolver().resolve(&mut p).await?;
+    let fo     = if read_only {
+        FileOpenBuilder::new().read_only().build().unwrap()
+    } else {
+        FileOpenBuilder::new().read_write().build().unwrap()
+    };
+    let handle = vnode.to_file().unwrap().clone().open(fo).await?;
+    Ok((handle, FdFlags::empty()))
 }

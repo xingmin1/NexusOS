@@ -214,6 +214,7 @@ dependencies = [
  "elf_loader",
  "nexus-error",
  "ostd",
+ "syscall-numbers",
  "tracing 0.1.41",
  "typeflags",
  "typeflags-util",
@@ -2015,6 +2016,7 @@ dependencies = [
  "crossbeam-queue",
  "error-stack",
  "fdt",
+ "futures",
  "gimli 0.28.1",
  "iced-x86",
  "id-alloc",
@@ -2818,6 +2820,12 @@ name = "sync_wrapper"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
+
+[[package]]
+name = "syscall-numbers"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e88dcf8be2fd556b3cebd02689c424dced834317c7e38328eadfcfcab00b785"
 
 [[package]]
 name = "tap"

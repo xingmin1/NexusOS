@@ -194,6 +194,18 @@ impl UserContextApi for UserContext {
     fn set_stack_pointer(&mut self, sp: usize) {
         self.user_context.set_sp(sp);
     }
+
+    fn syscall_number(&self) -> usize {
+        self.user_context.get_syscall_num()
+    }
+
+    fn set_syscall_return_value(&mut self, ret: usize) {
+        self.user_context.set_syscall_ret(ret);
+    }
+
+    fn syscall_arguments(&self) -> [usize; 6] {
+        self.user_context.get_syscall_args()
+    }
 }
 
 macro_rules! cpu_context_impl_getter_setter {

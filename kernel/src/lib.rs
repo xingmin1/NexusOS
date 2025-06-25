@@ -12,6 +12,7 @@
 mod error;
 mod thread;
 mod vm;
+mod syscall;
 
 extern crate alloc;
 

@@ -534,6 +534,11 @@ macro_rules! return_errno_with_message {
     };
 }
 
+#[track_caller]
+pub fn errno_with_message(errno: Errno, message: &'static str) -> error_stack::Report<Error> {
+    error_stack::Report::new(Error::with_message(errno, message))
+}
+
 impl error_stack::Context for Error {}
 
 /// 在字符串(String)中添加当前代码位置信息

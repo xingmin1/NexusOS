@@ -99,6 +99,15 @@ pub trait UserContextApi {
 
     /// Gets the stack pointer
     fn stack_pointer(&self) -> usize;
+
+    /// Gets the syscall number
+    fn syscall_number(&self) -> usize;
+
+    /// Sets the syscall return value
+    fn set_syscall_return_value(&mut self, ret: usize);
+
+    /// Gets the syscall arguments
+    fn syscall_arguments(&self) -> [usize; 6];
 }
 
 /// Code execution in the user mode.

@@ -20,6 +20,7 @@ use crate::{
 };
 
 /// The initial portion of the main stack of a process.
+#[derive(Clone)]
 pub struct InitStack {
     /// The initial highest address.
     /// The stack grows down from this address

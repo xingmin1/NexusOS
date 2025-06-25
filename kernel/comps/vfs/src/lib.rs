@@ -68,7 +68,7 @@ pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, F
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
-pub use static_dispatch::{vnode::{SVnode, file::{SFile, SFileHandle}, dir::SDir, symlink::SSymlink}, filesystem::SFileSystem, provider::SProvider,};
+pub use static_dispatch::{vnode::{SVnode, file::{SFile, SFileHandle}, dir::{SDir, SDirHandle}, symlink::SSymlink}, filesystem::SFileSystem, provider::SProvider,};
 pub use impls::ext4_fs::{get_ext4_provider, Ext4Provider, Ext4Fs, Ext4Vnode, Ext4FileHandle, Ext4DirHandle};
 
 use crate::path_resolver::PathResolver;

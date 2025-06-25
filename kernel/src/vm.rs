@@ -54,6 +54,18 @@ impl ProcessVm {
         }
     }
 
+    /// Forks a `ProcessVm` from `other`.
+    ///
+    /// The returned `ProcessVm` will have a forked `Vmar`.
+    pub async fn fork_from(other: &ProcessVm) -> Result<Self> {
+        let root_vmar = Vmar::<Full>::fork_from(&other.root_vmar).await?;
+        Ok(Self {
+            root_vmar,
+            // heap: other.heap.clone(),
+            init_stack: other.init_stack.clone(),
+        })
+    }
+
     pub async fn map_and_write_init_stack(
         &self,
         argv: Vec<CString>,

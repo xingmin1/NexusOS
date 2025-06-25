@@ -1,33 +1,37 @@
 pub mod exception;
 pub mod init_stack;
 pub mod loader;
+pub mod id;
+pub mod state;
+pub mod clone;
+pub mod thread_group;
+pub mod fd_table;
 
 use alloc::{
     ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
 };
-use core::str;
+use core::{future::Future, str};
 
 use exception::{handle_page_fault_from_vmar, PageFaultInfo};
 use loader::load_elf_to_vm;
 use ostd::{
-    arch::qemu::{exit_qemu, QemuExitCode},
     cpu::{CpuException, PinCurrentCpu, UserContext},
-    mm::{FallibleVmRead, VmSpace, VmWriter},
     sync::GuardRwArc,
     task::{
         disable_preempt, scheduler::blocking_future::BlockingFuture, CurrentTask, Task, TaskOptions,
     },
     user::{ReturnReason, UserContextApi, UserMode, UserSpace},
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info,};
 
-use crate::{error::Result, vm::ProcessVm};
+use crate::{error::Result, syscall::syscall, thread::{fd_table::FdTable, state::Lifecycle, thread_group::ThreadGroup}, vm::ProcessVm};
 
 #[derive(Clone)]
 pub struct ThreadSharedInfo {
     tid: u64,
     parent: Weak<ThreadSharedInfo>,
     children: GuardRwArc<Vec<Arc<ThreadSharedInfo>>>,
+    lifecycle: Lifecycle,
     // credentials: Arc<Credentials>,
     // namespaces: Arc<NamespaceInfo>,
     // signal_handling: Arc<SignalHandling>,
@@ -37,11 +41,11 @@ pub struct ThreadSharedInfo {
 
 pub struct ThreadState {
     pub task: Arc<Task>,
-    // pub thread_group: Arc<ThreadGroup>,
+    pub thread_group: Arc<ThreadGroup>,
     pub shared_info: Arc<ThreadSharedInfo>,
     pub process_vm: Arc<ProcessVm>,
     // pub memory_manager: Arc<MemoryManager>,
-    // pub file_table: Arc<FileTable>,
+    pub fd_table: Arc<FdTable>,
     // pub signal_mask: GuardRwLock<SigSet>,
     // pub signal_actions: GuardRwLock<SigActions>,
     // pub exit_signal: GuardRwLock<Option<SignalInfo>>,
@@ -119,67 +123,26 @@ impl<'a> ThreadBuilder<'a> {
         info!("创建用户任务完成，准备运行");
 
         let thread_shared_info = Arc::new(ThreadSharedInfo {
-            tid: 0,
+            tid: id::alloc(),
             parent: Weak::new(),
             children: GuardRwArc::new(vec![]),
+            lifecycle: Lifecycle::new(),
         });
+        let thread_group = ThreadGroup::new_leader(thread_shared_info.clone());
         let thread_local_data = ThreadLocalData {
             process_vm: process_vm.clone(),
         };
         let task = Arc::new(user_task_options.local_data(thread_local_data).build());
         let thread_state = ThreadState {
             task: task.clone(),
+            thread_group: thread_group.clone(),
             process_vm: process_vm.clone(),
             shared_info: thread_shared_info.clone(),
             user_brk: 0,
+            fd_table: Arc::new(FdTable::new(0)),
         };
 
-        let task_future = async move {
-            let current = &thread_state.task;
-            {
-                let disable_preempt = disable_preempt();
-                let cpu_id = disable_preempt.current_cpu().as_usize();
-                info!("用户任务开始在CPU {} 上执行", cpu_id);
-            }
-            let user_space = current.user_space().unwrap();
-            let mut user_mode = UserMode::new(user_space);
-            info!("创建用户模式完成，准备进入用户空间");
-
-            loop {
-                // The execute method returns when system
-                // calls or CPU exceptions occur or some
-                // events specified by the kernel occur.
-                debug!("准备切换到用户空间执行");
-                let return_reason = user_mode.execute(|| false).await;
-                debug!("从用户空间返回，原因: {:?}", return_reason);
-
-                // The CPU registers of the user space
-                // can be accessed and manipulated via
-                // the `UserContext` abstraction.
-                let user_context = user_mode.context_mut();
-                if return_reason == ReturnReason::UserException {
-                    if user_context.trap_information().code == CpuException::UserEnvCall {
-                        debug!("处理系统调用，系统调用号: {}", user_context.a7());
-                        handle_syscall(
-                            user_context,
-                            &thread_state.process_vm.root_vmar().vm_space(),
-                        );
-                    } else {
-                        debug!("处理异常");
-                        if let Ok(page_fault_info) =
-                            PageFaultInfo::try_from(user_context.trap_information())
-                        {
-                            let _ = handle_page_fault_from_vmar(
-                                &thread_state.process_vm.root_vmar(),
-                                &page_fault_info,
-                            )
-                            .block();
-                        }
-                    }
-                }
-            }
-        };
-        let _join_handle = task.run(task_future);
+        let _join_handle = task.run(task_future(thread_state));
 
         Ok(thread_shared_info)
     }
@@ -212,45 +175,59 @@ async fn create_user_task(process_vm: &ProcessVm, path: &str, argv: Vec<CString>
     Ok(TaskOptions::new().user_space(Some(user_space)))
 }
 
-fn handle_syscall(user_context: &mut UserContext, vm_space: &VmSpace) {
-    const SYS_WRITE: usize = 64;
-    const SYS_EXIT: usize = 93;
-
-    // RISC-V的系统调用号放在a7寄存器中
-    match user_context.a7() {
-        SYS_WRITE => {
-            // RISC-V，系统调用参数放在a0-a6寄存器中
-            let (fd, buf_addr, buf_len) = (user_context.a0(), user_context.a1(), user_context.a2());
-            debug!(
-                "处理write系统调用: fd={}, buf_addr=0x{:x}, buf_len={}",
-                fd, buf_addr, buf_len
-            );
-            let buf = {
-                let mut buf = vec![0u8; buf_len];
-                // Copy data from the user space without
-                // unsafe pointer dereferencing.
-                let mut reader = vm_space.reader(buf_addr, buf_len).unwrap();
-                reader
-                    .read_fallible(&mut VmWriter::from(&mut buf as &mut [u8]))
-                    .unwrap();
-                debug!("从用户空间读取数据成功，长度: {}", buf_len);
-                buf
-            };
-            // Use the console for output safely.
-            let content = str::from_utf8(&buf).unwrap();
-            info!("用户程序输出: {}", content);
-            // Manipulate the user-space CPU registers safely.
-            user_context.set_a0(buf_len);
-            debug!("write系统调用处理完成，返回值: {}", buf_len);
+pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + Send + 'static {
+    async move {
+        let current = &thread_state.task;
+        {
+            let disable_preempt = disable_preempt();
+            let cpu_id = disable_preempt.current_cpu().as_usize();
+            info!("用户任务开始在CPU {} 上执行", cpu_id);
         }
-        SYS_EXIT => {
-            let exit_code = user_context.a0();
-            info!("处理exit系统调用，退出码: {}", exit_code);
-            exit_qemu(QemuExitCode::Success);
+        let user_space = current.user_space().unwrap().clone();
+        let mut user_mode = UserMode::new(&user_space);
+        info!("创建用户模式完成，准备进入用户空间");
+    
+        loop {
+            // The execute method returns when system
+            // calls or CPU exceptions occur or some
+            // events specified by the kernel occur.
+            debug!("准备切换到用户空间执行");
+            let return_reason = user_mode.execute(|| false).await;
+            debug!("从用户空间返回，原因: {:?}", return_reason);
+    
+            // The CPU registers of the user space
+            // can be accessed and manipulated via
+            // the `UserContext` abstraction.
+            let user_context = user_mode.context_mut();
+            if return_reason == ReturnReason::UserException {
+                if user_context.trap_information().code == CpuException::UserEnvCall {
+                    debug!("处理系统调用，系统调用号: {}", user_context.a7());
+                    let res = syscall(&mut thread_state, user_context).await;
+                    match res {
+                        Ok(Some(ret)) => {
+                            user_context.set_syscall_return_value(ret as _);
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            error!("系统调用失败: {:?}", e);
+                            break;
+                        }
+                    }
+                } else {
+                    debug!("处理异常");
+                    if let Ok(page_fault_info) =
+                        PageFaultInfo::try_from(user_context.trap_information())
+                    {
+                        let _ = handle_page_fault_from_vmar(
+                            &thread_state.process_vm.root_vmar(),
+                            &page_fault_info,
+                        )
+                        .block();
+                    }
+                }
+            }
         }
-        syscall_num => {
-            warn!("未实现的系统调用: {}", syscall_num);
-            unimplemented!();
-        }
+        // 在用户 loop 跳出（正常或错误）后，进行收尾
+        thread_state.shared_info.lifecycle.exit(/*code*/ 0);
     }
 }

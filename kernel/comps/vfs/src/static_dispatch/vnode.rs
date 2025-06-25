@@ -2,17 +2,18 @@ pub mod file;
 pub mod dir;
 pub mod symlink;
 
+use crate::impls::dev_fs::DevVnode;
 use crate::impls::ext4_fs::vnode::Ext4Vnode;
 use crate::static_dispatch::vnode::dir::SDir;
 use crate::static_dispatch::vnode::file::SFile;
 use crate::static_dispatch::vnode::symlink::SSymlink;
 use crate::types::{VnodeId, VnodeMetadataChanges};
-use crate::{VfsResult, VnodeMetadata};
+use crate::{VfsResult, Vnode, VnodeMetadata};
 use alloc::sync::Arc;
 
 /// 静态派发后的统一 Vnode 类型。
 ///
-/// 目前仅支持 Ext4，后续可按需扩展。
+/// 目前仅支持 Ext4 和 Dev。
 #[derive(Clone)]
 pub enum SVnode {
     File(SFile),
@@ -84,6 +85,15 @@ impl From<Arc<Ext4Vnode>> for SVnode {
             crate::types::VnodeType::Directory => SVnode::Dir(SDir::Ext4(v)),
             crate::types::VnodeType::SymbolicLink => SVnode::Symlink(SSymlink::Ext4(v)),
             _ => SVnode::File(SFile::Ext4(v)),
+        }
+    }
+}
+
+impl From<Arc<DevVnode>> for SVnode {
+    fn from(v: Arc<DevVnode>) -> Self {
+        match v.cap_type() {
+            crate::types::VnodeType::Directory => SVnode::Dir(SDir::Dev(v)),
+            _ => SVnode::File(SFile::Dev(v)),
         }
     }
 }

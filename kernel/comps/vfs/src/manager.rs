@@ -168,6 +168,11 @@ impl VfsManager {
     pub fn self_arc(&self) -> VfsResult<Arc<Self>> {
         self.self_arc.upgrade().ok_or_else(|| KernelError::with_message(Errno::EINVAL, "manager gone").into())
     }
+
+    pub async fn get_filesystem(&self, path: &str) -> VfsResult<SFileSystem> {
+        let (_mpath, minfo, _rest) = self.locate_mount(PathSlice::from(path)).await?;
+        Ok(minfo.fs)
+    }
 }
 
 /* ---------- Builder ---------- */

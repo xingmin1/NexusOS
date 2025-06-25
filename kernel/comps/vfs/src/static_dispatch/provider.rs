@@ -3,18 +3,21 @@
 use alloc::sync::Arc;
 use crate::{AsyncBlockDevice, FileSystemProvider, FsOptions, VfsResult};
 use crate::impls::ext4_fs::provider::Ext4Provider;
+use crate::impls::dev_fs::DevFsProvider;
 use crate::static_dispatch::filesystem::SFileSystem;
 use crate::types::{FilesystemId, MountId};
 
 #[derive(Clone)]
 pub enum SProvider {
     Ext4(Arc<Ext4Provider>),
+    Dev(Arc<DevFsProvider>),
 }
 
 impl SProvider {
     pub fn fs_type_name(&self) -> &'static str {
         match self {
             SProvider::Ext4(p) => p.fs_type_name(),
+            SProvider::Dev(p) => p.fs_type_name(),
         }
     }
 
@@ -30,6 +33,10 @@ impl SProvider {
                 let fs = p.mount(dev, opts, mount_id, fs_id).await?;
                 Ok(SFileSystem::Ext4(fs))
             }
+            SProvider::Dev(p) => {
+                let fs = p.mount(dev, opts, mount_id, fs_id).await?;
+                Ok(SFileSystem::Dev(fs))
+            }
         }
     }
 }
@@ -37,5 +44,11 @@ impl SProvider {
 impl From<Arc<Ext4Provider>> for SProvider {
     fn from(p: Arc<Ext4Provider>) -> Self {
         SProvider::Ext4(p)
+    }
+}
+
+impl From<Arc<DevFsProvider>> for SProvider {
+    fn from(p: Arc<DevFsProvider>) -> Self {
+        SProvider::Dev(p)
     }
 }

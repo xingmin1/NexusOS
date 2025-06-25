@@ -70,8 +70,9 @@ pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
 pub use static_dispatch::{vnode::{SVnode, file::{SFile, SFileHandle}, dir::{SDir, SDirHandle}, symlink::SSymlink}, filesystem::SFileSystem, provider::SProvider,};
 pub use impls::ext4_fs::{get_ext4_provider, Ext4Provider, Ext4Fs, Ext4Vnode, Ext4FileHandle, Ext4DirHandle};
+pub use impls::dev_fs::{get_devfs_provider, DevFsProvider, DevFs, DevVnode, DevDirHandle, DevCharHandle, StdOutDevice};
 
-use crate::path_resolver::PathResolver;
+use crate::{path_resolver::PathResolver, types::FileMode};
 // pub use impls::memfs::{InMemoryFsProvider, get_memfs_provider};
 
 pub static VFS_MANAGER: InitOnce<Arc<VfsManager>> = InitOnce::uninitialized();
@@ -79,8 +80,14 @@ pub static VFS_MANAGER: InitOnce<Arc<VfsManager>> = InitOnce::uninitialized();
 pub async fn init_vfs() {
     let vfs_manager = VfsManager::builder()
         .provider(get_ext4_provider().into())
+        .provider(get_devfs_provider().into())
         .build();
     vfs_manager.mount(None, "/", "ext4", Default::default()).await.unwrap();
+    vfs_manager.mount(None, "/dev", "devfs", Default::default()).await.unwrap();
+
+    let dev_fs = vfs_manager.get_filesystem("/dev").await.unwrap().to_devfs().unwrap();
+    dev_fs.register_char_device("serial", Arc::new(StdOutDevice), FileMode::ALL_PERMISSIONS).await.unwrap();
+
     VFS_MANAGER.init(vfs_manager);
 }
 

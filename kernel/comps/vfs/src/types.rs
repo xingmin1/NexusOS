@@ -390,11 +390,13 @@ impl FsOptions {
 
 /// 用于构建 `FsOptions` 实例的构建器模式。
 #[derive(Default, Debug)]
+#[allow(unused)]
 pub struct FsOptionsBuilder {
     options: BTreeMap<AllocOsString, AllocOsString>, // 存储选项的 BTreeMap
     read_only: Option<bool>,                     // 只读标志，None 表示使用默认值 (false)
 }
 
+#[allow(unused)]
 impl FsOptionsBuilder {
     /// 创建一个新的 `FsOptionsBuilder` 实例。
     pub fn new() -> Self {

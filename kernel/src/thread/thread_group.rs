@@ -33,6 +33,10 @@ impl ThreadGroup {
     pub fn id(&self) -> u64 {
         self.id
     }
+
+    pub fn members(&self) -> &GuardRwArc<Vec<Arc<ThreadSharedInfo>>> {
+        &self.members
+    }
 }
 
 /// 为 *fork*（非 CLONE_THREAD）预留：生成新 thread‑group id。

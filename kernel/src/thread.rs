@@ -6,11 +6,12 @@ pub mod state;
 pub mod clone;
 pub mod thread_group;
 pub mod fd_table;
+pub mod exit;
 
 use alloc::{
     ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
 };
-use core::{future::Future, str};
+use core::{future::Future, ops::ControlFlow, str};
 
 use exception::{handle_page_fault_from_vmar, PageFaultInfo};
 use loader::load_elf_to_vm;
@@ -188,7 +189,7 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
         let mut user_mode = UserMode::new(&user_space);
         info!("创建用户模式完成，准备进入用户空间");
     
-        loop {
+        let code = loop {
             // The execute method returns when system
             // calls or CPU exceptions occur or some
             // events specified by the kernel occur.
@@ -202,16 +203,18 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
             let user_context = user_mode.context_mut();
             if return_reason == ReturnReason::UserException {
                 if user_context.trap_information().code == CpuException::UserEnvCall {
-                    debug!("处理系统调用，系统调用号: {}", user_context.a7());
+                    debug!("处理系统调用，系统调用号: {}", user_context.syscall_number());
                     let res = syscall(&mut thread_state, user_context).await;
                     match res {
-                        Ok(Some(ret)) => {
+                        Ok(ControlFlow::Continue(ret)) => {
                             user_context.set_syscall_return_value(ret as _);
                         }
-                        Ok(None) => {}
+                        Ok(ControlFlow::Break(code)) => {
+                            break code;
+                        }
                         Err(e) => {
                             error!("系统调用失败: {:?}", e);
-                            break;
+                            break 0;
                         }
                     }
                 } else {
@@ -227,8 +230,8 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
                     }
                 }
             }
-        }
+        };
         // 在用户 loop 跳出（正常或错误）后，进行收尾
-        thread_state.shared_info.lifecycle.exit(/*code*/ 0);
+        thread_state.shared_info.lifecycle.exit(code);
     }
 }

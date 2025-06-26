@@ -410,7 +410,7 @@ pub(crate) async fn might_preempt() {
 }
 
 /// 主动让出执行权。
-pub(super) async fn yield_now() {
+pub async fn yield_now() {
     super::atomic_mode::might_sleep();
 
     // 安全性: RCU 读侧临界区会禁用抢占。执行到这里时，

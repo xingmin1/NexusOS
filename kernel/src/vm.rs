@@ -86,6 +86,10 @@ impl ProcessVm {
     pub fn root_vmar(&self) -> &Vmar<Full> {
         &self.root_vmar
     }
+
+    pub async fn clear_root_vmar(&self) -> Result<()> {
+        self.root_vmar.clear().await
+    }
 }
 
 impl ProcessVm {

@@ -26,6 +26,8 @@ pub struct ElfMapper<'a> {
 
 impl<'a> ElfMapper<'a> {
     pub async fn map(self, argv: Vec<CString>, envp: Vec<CString>) -> Result<ElfLoadInfo> {
+        self.vm.clear_root_vmar().await?;
+
         let (ehdr, phdrs) = {
             let mut loader = Loader::<MmapImpl>::new();
             let mut binary = self.image.as_binary();

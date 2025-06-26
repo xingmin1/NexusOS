@@ -11,7 +11,8 @@ pub async fn do_wait4(state: &mut ThreadState, uc: &mut ostd::cpu::UserContext) 
 
     if options & 0x01 != 0 { /* WNOHANG */
         if let Some((tid, code)) = try_collect(&state.shared_info, pid).await? {
-            copy_status(state, status_ptr, code);
+            tracing::info!("wait4: tid={}, code={}", tid, code);
+            copy_status(state, status_ptr, (code & 0xff) << 8);
             return Ok(ControlFlow::Continue(Some(tid as isize)));
         }
         return Ok(ControlFlow::Continue(Some(0))); // 立即返回
@@ -19,7 +20,8 @@ pub async fn do_wait4(state: &mut ThreadState, uc: &mut ostd::cpu::UserContext) 
 
     loop {
         if let Some((tid, code)) = try_collect(&state.shared_info, pid).await? {
-            copy_status(state, status_ptr, code);
+            tracing::info!("wait4: tid={}, code={}", tid, code);
+            copy_status(state, status_ptr, (code & 0xff) << 8);
             return Ok(ControlFlow::Continue(Some(tid as isize)));
         }
         // 还未退出，阻塞等待

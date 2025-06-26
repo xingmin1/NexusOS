@@ -2,13 +2,14 @@ mod fs;
 
 use core::{ffi::c_long, ops::ControlFlow};
 
-use nexus_error::{return_errno_with_message, Result};
+use nexus_error::error_stack::ResultExt;
+use nexus_error::{errno_with_message, Result};
 use ostd::{cpu::UserContext, user::UserContextApi};
 use syscall_numbers::native::*;
 use tracing::warn;
 
 use crate::syscall::fs::{do_close, do_fstat, do_getdents64, do_linkat, do_mkdirat, do_mount, do_openat, do_read, do_umount2, do_unlinkat, do_write};
-use crate::thread::{clone::do_clone, execve::do_execve, get_pid::do_getpid, get_ppid::do_getppid, wait::do_wait4, ThreadState};
+use crate::thread::{clone::do_clone, execve::do_execve, get_pid::do_getpid, get_ppid::do_getppid, sched_yield::do_sched_yield, wait::do_wait4, ThreadState};
 use crate::thread::exit::do_exit;
 
 #[allow(non_upper_case_globals)]
@@ -40,9 +41,12 @@ pub async fn syscall(state: &mut ThreadState, context: &mut UserContext) -> Resu
         SYS_mount => do_mount(state, context).await,
         SYS_umount2 => do_umount2(state, context).await,
         SYS_fstat => do_fstat(state, context).await,
+        SYS_sched_yield => do_sched_yield(state, context).await,
         num => {
             warn!("syscall not implemented: number={}, name={}, args={:?}", num, sys_call_name(num).unwrap_or("unknown"), context.syscall_arguments());
-            return_errno_with_message!(nexus_error::Errno::ENOSYS, "syscall not implemented")
+            Err(errno_with_message(nexus_error::Errno::ENOSYS, "syscall not implemented")).attach_printable_lazy(|| {
+                alloc::format!("number={}, name={}, args={:?}", num, sys_call_name(num).unwrap_or("unknown"), context.syscall_arguments())
+            })
         }
     }
 }

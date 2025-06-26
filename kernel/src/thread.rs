@@ -11,6 +11,7 @@ pub mod wait;
 pub mod execve;
 pub mod get_ppid;
 pub mod get_pid;
+pub mod sched_yield;
 
 use alloc::{
     ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
@@ -245,6 +246,7 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
                     let res = syscall(&mut thread_state, user_context).await;
                     match res {
                         Ok(ControlFlow::Continue(Some(ret))) => {
+                            tracing::info!("系统调用返回值: {}", ret);
                             user_context.set_syscall_return_value(ret as _);
                         }
                         Ok(ControlFlow::Continue(None)) => {}

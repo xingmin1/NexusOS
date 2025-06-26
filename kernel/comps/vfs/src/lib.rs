@@ -64,7 +64,7 @@ use ostd::sync::spin::InitOnce;
 // 从各个模块中导出常用类型，方便使用
 pub use path::{PathSlice, PathBuf};
 pub use traits::{FileSystem, Vnode, FileHandle, DirHandle, FileSystemProvider, AsyncBlockDevice};
-pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode, FileOpenBuilder};
+pub use types::{FileOpen, VnodeType, VnodeMetadata, DirectoryEntry, FsOptions, FilesystemStats, OpenStatus, AccessMode, FileOpenBuilder, FileMode};
 pub use verror::{VfsResult};
 pub use manager::{VfsManager, VfsManagerBuilder};
 pub use cache::{VnodeCache, DentryCache};
@@ -72,7 +72,7 @@ pub use static_dispatch::{vnode::{SVnode, file::{SFile, SFileHandle}, dir::{SDir
 pub use impls::ext4_fs::{get_ext4_provider, Ext4Provider, Ext4Fs, Ext4Vnode, Ext4FileHandle, Ext4DirHandle};
 pub use impls::dev_fs::{get_devfs_provider, DevFsProvider, DevFs, DevVnode, DevDirHandle, DevCharHandle, StdOutDevice};
 
-use crate::{path_resolver::PathResolver, types::FileMode};
+use crate::path_resolver::PathResolver;
 // pub use impls::memfs::{InMemoryFsProvider, get_memfs_provider};
 
 pub static VFS_MANAGER: InitOnce<Arc<VfsManager>> = InitOnce::uninitialized();

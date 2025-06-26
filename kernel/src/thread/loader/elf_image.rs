@@ -27,7 +27,7 @@ impl ElfImage {
     /// 提供给 `ElfMapper` 解析。  
     pub fn as_binary(&self) -> ElfBinary<'_> {
         ElfBinary::new(
-            self.path.to_slice().file_name().unwrap_or(&self.path),
+            self.path.as_slice().file_name().unwrap_or(&self.path),
             &self.bytes,
         )
     }

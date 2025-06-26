@@ -102,8 +102,8 @@ impl Vnode for Ext4Vnode {
         self.inode as u64
     }
 
-    fn filesystem(&self) -> &Self::FS {
-        &self.fs
+    fn filesystem(&self) -> Arc<Self::FS> {
+        self.fs.clone()
     }
 
     async fn metadata(&self) -> VfsResult<VnodeMetadata> {

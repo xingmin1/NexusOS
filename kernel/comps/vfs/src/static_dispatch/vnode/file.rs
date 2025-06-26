@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
-use crate::impls::dev_fs::{DevCharHandle, DevVnode};
+use crate::impls::dev_fs::DevCharHandle;
+use crate::impls::dev_fs::DevVnode;
 use crate::impls::ext4_fs::vnode::{Ext4FileHandle, Ext4Vnode};
 use crate::types::{SeekFrom, VnodeId, VnodeMetadataChanges};
 use crate::{FileHandle, FileOpen, VfsResult, Vnode, VnodeMetadata};

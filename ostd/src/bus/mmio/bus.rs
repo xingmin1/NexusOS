@@ -6,7 +6,7 @@
 
 use alloc::{collections::VecDeque, fmt::Debug, sync::Arc, vec::Vec};
 
-use log::{debug, error};
+use tracing::{debug, trace};
 
 use super::common_device::MmioCommonDevice;
 use crate::bus::BusProbeError;
@@ -56,7 +56,7 @@ impl MmioBus {
                 }
                 Err((err, device)) => {
                     if err != BusProbeError::DeviceNotMatch {
-                        error!("MMIO device construction failed, reason: {:?}", err);
+                        trace!("MMIO device construction failed, reason: {:?}", err);
                     }
                     device
                 }
@@ -79,7 +79,7 @@ impl MmioBus {
                 }
                 Err((err, common_device)) => {
                     if err != BusProbeError::DeviceNotMatch {
-                        error!("MMIO device construction failed, reason: {:?}", err);
+                        trace!("MMIO device construction failed, reason: {:?}", err);
                     }
                     common_device
                 }

@@ -19,8 +19,8 @@
 use alloc::{ffi::CString, vec::Vec};
 
 use aster_rights::Full;
-use nexus_error::{errno_with_message, ostd_error_to_errno, return_errno_with_message, Errno};
-use ostd::{mm::{Fallible, Vaddr, VmReader}, Pod};
+use nexus_error::{errno_with_message, error_stack::ResultExt, ostd_error_to_errno, ostd_tuple_to_errno, return_errno_with_message, Errno};
+use ostd::{mm::{Fallible, FallibleVmRead, FallibleVmWrite, Infallible, Vaddr, VmReader, VmWriter}, Pod};
 use vmar::Vmar;
 
 use crate::{
@@ -89,6 +89,27 @@ impl ProcessVm {
 }
 
 impl ProcessVm {
+    /// Writes bytes from the source `VmReader` to the user space of the current
+    /// process.
+    ///
+    /// If the writing is completely successful, returns `Ok`. Otherwise, it
+    /// returns `Err`.
+    ///
+    /// If the source `VmReader` (`src`) is empty, this function still checks if
+    /// the current task and user space are available. If they are, it returns
+    /// `Ok`.
+    pub fn write_bytes(&self, dest: Vaddr, src: &mut VmReader<'_, Infallible>) -> Result<()> {
+        let copy_len = src.remain();
+
+        if copy_len > 0 {
+            check_vaddr(dest)?;
+        }
+
+        let mut user_writer = self.root_vmar.vm_space().writer(dest, copy_len).map_err(ostd_error_to_errno)?;
+        user_writer.write_fallible(src).map_err(ostd_tuple_to_errno)?;
+        Ok(())
+    }
+    
     /// Writes `val` to the user space of the current process.
     pub fn write_val<T: Pod>(&self, dest: Vaddr, val: &T) -> Result<()> {
         if core::mem::size_of::<T>() > 0 {
@@ -102,6 +123,27 @@ impl ProcessVm {
             .map_err(ostd_error_to_errno)
     }
 
+    
+    /// Reads bytes into the destination `VmWriter` from the user space of the
+    /// current process.
+    ///
+    /// If the reading is completely successful, returns `Ok`. Otherwise, it
+    /// returns `Err`.
+    ///
+    /// If the destination `VmWriter` (`dest`) is empty, this function still
+    /// checks if the current task and user space are available. If they are,
+    /// it returns `Ok`.
+    pub fn read_bytes(&self, src: Vaddr, dest: &mut VmWriter<'_, Infallible>) -> Result<()> {
+        let copy_len = dest.avail();
+
+        if copy_len > 0 {
+            check_vaddr(src)?;
+        }
+
+        let mut user_reader = self.root_vmar.vm_space().reader(src, copy_len).map_err(ostd_error_to_errno)?;
+        user_reader.read_fallible(dest).map_err(ostd_tuple_to_errno)?;
+        Ok(())
+    }
     
     /// Reads a value typed `Pod` from the user space of the current process.
     pub fn read_val<T: Pod>(&self, src: Vaddr) -> Result<T> {
@@ -147,7 +189,7 @@ fn check_vaddr(va: Vaddr) -> Result<()> {
         Err(errno_with_message(
             Errno::EFAULT,
             "Bad user space pointer specified",
-        ))
+        )).attach_printable_lazy(|| alloc::format!("va: {}", va))
     } else {
         Ok(())
     }

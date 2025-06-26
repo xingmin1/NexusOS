@@ -6,7 +6,7 @@
 use alloc::collections::BTreeMap;
 use alloc::fmt;
 use alloc::string::String;
-use nexus_error::error_stack::Context;
+use nexus_error::error_stack::{Context, Result, ResultExt};
 use ostd::timer::Jiffies as SystemTime;
 use bitflags::bitflags;
 
@@ -211,13 +211,13 @@ impl Context for InvalidFlags {}
 
 impl FileOpen {
     /// 从用户态 flags 构造，若访问模式非法则返回 `Err`
-    pub const fn new(raw_flags: u32) -> Result<Self, InvalidFlags> {
+    pub fn new(raw_flags: u32) -> Result<Self, InvalidFlags> {
         let access_val = raw_flags & 0b11; // 低两位
         let access = match access_val {
             0 => AccessMode::ReadOnly,
             1 => AccessMode::WriteOnly,
             2 => AccessMode::ReadWrite,
-            _ => return Err(InvalidFlags), // 理论上 3 保留
+            _ => return Err(InvalidFlags.into()), // 理论上 3 保留
         };
 
         let status_bits = raw_flags & !0b11;
@@ -238,6 +238,11 @@ impl FileOpen {
     #[inline] pub const fn is_append(&self) -> bool { self.status.contains(OpenStatus::APPEND) }
     #[inline] pub const fn is_exclusive(&self) -> bool { self.status.contains(OpenStatus::EXCL) }
     #[inline] pub const fn is_cloexec(&self) -> bool { self.status.contains(OpenStatus::CLOEXEC) }
+
+    pub fn cloexec(mut self) -> Self {
+        self.status.insert(OpenStatus::CLOEXEC);
+        self
+    }
 }
 
 /// 构建 FileOpen 的链式 Builder
@@ -295,7 +300,7 @@ impl FileOpenBuilder {
         let access = self.access.ok_or(BuildError::MissingAccess)?;
         // 低两位来自访问模式，其他位来自 status
         let raw = (access as u32) | self.status.bits();
-        FileOpen::new(raw).map_err(BuildError::InvalidFlags)
+        FileOpen::new(raw).change_context_lazy(|| BuildError::InvalidFlags(InvalidFlags))
     }
 }
 

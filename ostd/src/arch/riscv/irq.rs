@@ -9,10 +9,7 @@ use id_alloc::IdAlloc;
 use spin::Once;
 
 use crate::{
-    cpu::CpuId,
-    cpu_local,
-    sync::{blocking::Mutex, spin::Spinlock, GuardSpinLock, PreemptDisabled, SpinLockGuard},
-    trap::TrapFrame,
+    cpu::CpuId, cpu_local, sync::{blocking::Mutex, spin::Spinlock, GuardSpinLock, PreemptDisabled, SpinLockGuard}, trap::TrapFrame
 };
 
 /// The global allocator for software defined IRQ lines.
@@ -99,16 +96,24 @@ pub(crate) fn enable_all_local() {
         riscv::register::sie::set_sext();
         riscv::register::sie::set_ssoft();
         riscv::register::sie::set_stimer();
+        riscv::register::sstatus::set_sum();
     }
 }
 
 pub(crate) fn enable_local() {
+    // if !crate::IN_BOOTSTRAP_CONTEXT.load(Ordering::Relaxed) {
+    //     early_println!("enable_local");
+    // }
     unsafe {
         riscv::interrupt::enable();
     }
 }
 
+#[track_caller]
 pub(crate) fn disable_local() {
+    // if !crate::IN_BOOTSTRAP_CONTEXT.load(Ordering::Relaxed) {
+    //     early_println!("disable_local, caller: {}", core::panic::Location::caller());
+    // }
     riscv::interrupt::disable();
 }
 

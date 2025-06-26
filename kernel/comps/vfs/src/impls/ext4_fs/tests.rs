@@ -42,7 +42,7 @@ async fn test_basic() -> VfsResult<()> {
     let (_, mount_info, _) = vfs_manager.locate_mount("/".into()).await?;
     let fs = mount_info.fs;
     let root_vnode = fs.root_vnode().await?;
-    let root_vnode = root_vnode.to_dir().unwrap();
+    let root_vnode = root_vnode.as_dir().unwrap();
 
     info!("root mounted");
 
@@ -51,7 +51,7 @@ async fn test_basic() -> VfsResult<()> {
         .create("ktest".as_ref(), VnodeType::Directory, FileMode::OWNER_RWE, None)
         .await
         .attach_printable("mkdir ktest")?;
-    let d_node = d_node.to_dir().unwrap();
+    let d_node = d_node.as_dir().unwrap();
     debug!("mkdir ok");
 
     // --- 3. create file & write ---
@@ -59,7 +59,7 @@ async fn test_basic() -> VfsResult<()> {
         .create("hello.txt".as_ref(), VnodeType::File, FileMode::OWNER_RWE, None)
         .await?;
     let fnode_handle = fnode
-        .to_file()
+        .as_file()
         .unwrap()
         .clone()
         .open(FileOpen::new(2 | OpenStatus::CREATE.bits()).change_context_lazy(|| KernelError::new(Errno::EINVAL))?)

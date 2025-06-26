@@ -57,7 +57,7 @@ pub trait Vnode: Send + Sync + 'static {
     type FS: FileSystem<Vnode = Self>;
 
     fn id(&self) -> VnodeId;
-    fn filesystem(&self) -> &Self::FS;
+    fn filesystem(&self) -> Arc<Self::FS>;
 
     fn metadata(&self) -> impl Future<Output = VfsResult<VnodeMetadata>> + Send;
     fn set_metadata(&self, ch: VnodeMetadataChanges) -> impl Future<Output = VfsResult<()>> + Send;

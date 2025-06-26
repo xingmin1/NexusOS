@@ -1,6 +1,6 @@
 use alloc::collections::BTreeMap;
 use alloc::string::String;
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use nexus_error::Errno;
 use ostd::sync::{Mutex, RwLock};
 use crate::impls::dev_fs::driver::AsyncCharDevice;
@@ -38,14 +38,14 @@ impl DevVnode {
 }
 
 pub struct DirData {
-    pub(super) fs: Arc<DevFs>,
+    pub(super) fs: Weak<DevFs>,
     pub(super) id: VnodeId,
     pub(super) children: RwLock<BTreeMap<String, Arc<DevVnode>>>,
     pub(super) metadata: RwLock<VnodeMetadata>,
 }
 
 pub struct CharData {
-    pub(super) fs: Arc<DevFs>,
+    pub(super) fs: Weak<DevFs>,
     pub(super) id: VnodeId,
     pub(super) dev: Arc<dyn AsyncCharDevice>,
     pub(super) metadata: RwLock<VnodeMetadata>,
@@ -55,10 +55,10 @@ impl Vnode for DevVnode {
     type FS = DevFs;
 
     fn id(&self) -> VnodeId { self.id() }
-    fn filesystem(&self) -> &Self::FS {
+    fn filesystem(&self) -> Arc<Self::FS> {
         match self {
-            Self::Directory(d) => &d.fs,
-            Self::CharDevice(c) => &c.fs,
+            Self::Directory(d) => d.fs.upgrade().unwrap(),
+            Self::CharDevice(c) => c.fs.upgrade().unwrap(),
         }
     }
 

@@ -27,7 +27,7 @@ impl PathBuf {
     /// **内部使用**：跳过校验直接构建
     #[inline] pub(crate) fn from_str_unchecked(s: String) -> Self { Self(s) }
 
-    pub fn to_slice(&self) -> PathSlice { PathSlice::from(self) }
+    pub fn as_slice(&self) -> PathSlice { PathSlice::from(self) }
 }
 
 impl core::fmt::Display for PathBuf {

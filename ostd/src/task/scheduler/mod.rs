@@ -27,7 +27,6 @@ use core::{
     cmp,
     fmt::Debug,
     future::Future,
-    pin::Pin,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering::*},
 };
 
@@ -44,7 +43,6 @@ use super::{disable_preempt, preempt::cpu_local, Task};
 use crate::{
     cpu::{CpuId, PinCurrentCpu},
     cpu_local,
-    prelude::println,
 };
 
 /// 单核内核运行时。
@@ -58,7 +56,7 @@ pub struct Core {
     id: usize,
 
     /// 如果此核心应关闭，则设置为 `false`。
-    running: AtomicBool,
+    // running: AtomicBool,
 
     /// 用于选择下一个要窃取工作的核心的索引。
     ///
@@ -137,6 +135,30 @@ cpu_local! {
     static SCHEDULER: Cell<Option<&'static StaticScheduler>> = Cell::new(None);
 }
 
+cpu_local! {
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+}
+
+/// 如果此核心当前正在运行，则停止它。
+///
+/// # 返回
+///
+/// - 如果此核心正在运行并且现在正在停止，则返回 `true`
+/// - 如果此核心未运行，则返回 `false`。
+pub fn stop_running() -> bool {
+    RUNNING.with(|running| {
+        let was_running = running
+        .compare_exchange(
+            true,
+            false,
+            core::sync::atomic::Ordering::AcqRel,
+            core::sync::atomic::Ordering::Acquire,
+        )
+        .is_ok();
+        was_running
+    })
+}
+
 impl Core {
     /// 创建一个新的核心。
     #[must_use]
@@ -147,7 +169,7 @@ impl Core {
             scheduler,
             id,
             rng: rand_xoshiro::Xoroshiro128PlusPlus::seed_from_u64(id as u64),
-            running: AtomicBool::new(false),
+            // running: AtomicBool::new(false),
         }
     }
 
@@ -183,28 +205,30 @@ impl Core {
     /// 如果此核心当前正在运行，则返回 `true`。
     #[inline]
     pub fn is_running(&self) -> bool {
-        self.running.load(core::sync::atomic::Ordering::Acquire)
+        RUNNING.with(|running| {
+            running.load(core::sync::atomic::Ordering::Acquire)
+        })
     }
 
-    /// 如果此核心当前正在运行，则停止它。
-    ///
-    /// # 返回
-    ///
-    /// - 如果此核心正在运行并且现在正在停止，则返回 `true`
-    /// - 如果此核心未运行，则返回 `false`。
-    pub fn stop(&self) -> bool {
-        let was_running = self
-            .running
-            .compare_exchange(
-                true,
-                false,
-                core::sync::atomic::Ordering::AcqRel,
-                core::sync::atomic::Ordering::Acquire,
-            )
-            .is_ok();
-        log::info!("stopping core={}, was_running={}", self.id, was_running);
-        was_running
-    }
+    // /// 如果此核心当前正在运行，则停止它。
+    // ///
+    // /// # 返回
+    // ///
+    // /// - 如果此核心正在运行并且现在正在停止，则返回 `true`
+    // /// - 如果此核心未运行，则返回 `false`。
+    // pub fn stop(&self) -> bool {
+    //     let was_running = self
+    //         .running
+    //         .compare_exchange(
+    //             true,
+    //             false,
+    //             core::sync::atomic::Ordering::AcqRel,
+    //             core::sync::atomic::Ordering::Acquire,
+    //         )
+    //         .is_ok();
+    //     log::info!("stopping core={}, was_running={}", self.id, was_running);
+    //     was_running
+    // }
 
     /// 运行此核心直到 [`Core::stop`] 被调用。
     pub fn run(&mut self) {
@@ -215,11 +239,9 @@ impl Core {
             }
         }
 
-        if self
-            .running
-            .compare_exchange(false, true, AcqRel, Acquire)
-            .is_err()
-        {
+        if RUNNING.with(|running| {
+            running.compare_exchange(false, true, AcqRel, Acquire).is_err()
+        }) {
             log::error!("this core is already running!");
             return;
         }
@@ -258,11 +280,9 @@ impl Core {
             }
         }
 
-        if self
-            .running
-            .compare_exchange(false, true, AcqRel, Acquire)
-            .is_err()
-        {
+        if RUNNING.with(|running| {
+            running.compare_exchange(false, true, AcqRel, Acquire).is_err()
+        }) {
             log::error!("this core is already running!");
             return;
         }
@@ -413,14 +433,9 @@ where
 {
     let runnable_ptr = Arc::as_ptr(&runnable) as usize;
     let future = async move {
-        if let Some(user_space) = runnable.user_space() {
-            println!("user_space.vm_space().activate()");
-            user_space.vm_space().activate();
-        }
         crate::arch::irq::enable_local();
 
-        future.await;
-        exit_current().await;
+        future.await
     };
     spawn(future, Some(runnable_ptr))
 }
@@ -433,26 +448,6 @@ fn set_need_preempt(cpu_id: CpuId) {
         cpu_local::set_need_preempt();
     } else {
         // TODO: 发送 IPI (核间中断) 来设置远程 CPU 的 `need_preempt` 标志
-    }
-}
-
-/// 仅当当前任务要退出时才应调用此函数。
-pub(super) async fn exit_current() -> ! {
-    cpu_local::clear_need_preempt();
-    ExitCurrent.await;
-    unreachable!()
-}
-
-struct ExitCurrent;
-
-impl Future for ExitCurrent {
-    type Output = ();
-
-    fn poll(
-        self: Pin<&mut Self>,
-        _: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        core::task::Poll::Ready(())
     }
 }
 

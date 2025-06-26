@@ -15,17 +15,17 @@ pub mod get_pid;
 use alloc::{
     ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
 };
-use core::{future::Future, ops::ControlFlow, str};
+use nexus_error::Error;
+use pin_project_lite::pin_project;
+use syscall_numbers::riscv32::sys_call_name;
+use core::{future::Future, ops::ControlFlow, pin::Pin, str, task::{Context, Poll}};
 
 use exception::{handle_page_fault_from_vmar, PageFaultInfo};
 use loader::load_elf_to_vm;
 use ostd::{
-    cpu::{CpuException, PinCurrentCpu, UserContext},
-    sync::GuardRwArc,
-    task::{
-        disable_preempt, scheduler::blocking_future::BlockingFuture, CurrentTask, Task, TaskOptions,
-    },
-    user::{ReturnReason, UserContextApi, UserMode, UserSpace},
+    cpu::{CpuException, PinCurrentCpu, UserContext}, mm::VmSpace, sync::GuardRwArc, task::{
+        disable_preempt, scheduler::blocking_future::BlockingFuture, CurrentTask, JoinHandle, Task, TaskOptions
+    }, user::{ReturnReason, UserContextApi, UserMode, UserSpace}
 };
 use tracing::{debug, error, info,};
 
@@ -113,7 +113,7 @@ impl<'a> ThreadBuilder<'a> {
         self
     }
 
-    pub async fn spawn(&mut self) -> Result<Arc<ThreadSharedInfo>> {
+    pub async fn spawn(&mut self) -> Result<(Arc<ThreadSharedInfo>, JoinHandle<()>)> {
         let process_vm = Arc::new(ProcessVm::alloc());
         let user_task_options = create_user_task(
             &process_vm,
@@ -148,9 +148,11 @@ impl<'a> ThreadBuilder<'a> {
             fd_table,
         };
 
-        let _join_handle = task.run(task_future(thread_state));
+        let vm_space = process_vm.root_vmar().vm_space().clone();
+        let future = task_future(thread_state);
+        let join_handle = task.run(ThreadFuture::new(vm_space, future));
 
-        Ok(thread_shared_info)
+        Ok((thread_shared_info, join_handle))
     }
 }
 
@@ -181,6 +183,31 @@ async fn create_user_task(process_vm: &ProcessVm, path: &str, argv: Vec<CString>
     Ok(TaskOptions::new().user_space(Some(user_space)))
 }
 
+pin_project! {
+    struct ThreadFuture<F> {
+        vm_space: Arc<VmSpace>,
+        #[pin]
+        future: F,
+    }
+}
+
+impl<F> ThreadFuture<F> {
+    pub fn new(vm_space: Arc<VmSpace>, future: F) -> Self {
+        Self { vm_space, future }
+    }
+}
+
+impl<F> Future for ThreadFuture<F>
+where F: Future<Output = ()> + Send + 'static
+{
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.vm_space.activate();
+        self.project().future.poll(cx)
+    }
+}
+
 pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + Send + 'static {
     async move {
         let current = &thread_state.task;
@@ -192,14 +219,15 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
         let user_space = current.user_space().unwrap().clone();
         let mut user_mode = UserMode::new(&user_space);
         info!("创建用户模式完成，准备进入用户空间");
+        let current_id = thread_state.shared_info.tid;
     
         let code = loop {
             // The execute method returns when system
             // calls or CPU exceptions occur or some
             // events specified by the kernel occur.
-            debug!("准备切换到用户空间执行");
+            debug!("准备切换到用户空间执行: {}", current_id);
             let return_reason = user_mode.execute(|| false).await;
-            debug!("从用户空间返回，原因: {:?}", return_reason);
+            debug!("从用户空间返回，原因: {:?} 线程id: {}", return_reason, current_id);
     
             // The CPU registers of the user space
             // can be accessed and manipulated via
@@ -207,7 +235,8 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
             let user_context = user_mode.context_mut();
             if return_reason == ReturnReason::UserException {
                 if user_context.trap_information().code == CpuException::UserEnvCall {
-                    debug!("处理系统调用，系统调用号: {}", user_context.syscall_number());
+                    let syscall_number = user_context.syscall_number() as i64;
+                    debug!("处理系统调用，系统调用号: {}， {}", syscall_number, sys_call_name(syscall_number).unwrap_or("unknown"));
                     let res = syscall(&mut thread_state, user_context).await;
                     match res {
                         Ok(ControlFlow::Continue(Some(ret))) => {
@@ -219,7 +248,8 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
                         }
                         Err(e) => {
                             error!("系统调用失败: {:?}", e);
-                            break 0;
+                            let ret = e.downcast_ref::<Error>().map(|e| e.error() as _).unwrap_or(-1);
+                            user_context.set_syscall_return_value(ret as _);
                         }
                     }
                 } else {

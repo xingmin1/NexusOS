@@ -109,7 +109,7 @@ impl<T: 'static> CpuLocal<T> {
     /// 返回:
     ///   - 闭包函数的执行结果
     pub fn with<U>(&'static self, f: impl FnOnce(&T) -> U) -> U {
-        let _guard = arch::irq::disable_local(); // 禁用本地中断，确保独占访问
+        let _guard = crate::trap::disable_local(); // 禁用本地中断，确保独占访问
         f(unsafe { &*self.as_ptr() }) // 安全地解引用指针并执行闭包
     }
 

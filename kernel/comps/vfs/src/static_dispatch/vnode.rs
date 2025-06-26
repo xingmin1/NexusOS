@@ -51,21 +51,42 @@ impl SVnode {
         }
     }
 
-    pub fn to_file(&self) -> Option<&SFile> {
+    pub fn as_file(&self) -> Option<&SFile> {
         match self {
             SVnode::File(f) => Some(f),
             _ => None,
         }
     }
 
-    pub fn to_dir(&self) -> Option<&SDir> {
+    pub fn to_file(self) -> Option<SFile> {
+        match self {
+            SVnode::File(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    pub fn as_dir(&self) -> Option<&SDir> {
         match self {
             SVnode::Dir(d) => Some(d),
             _ => None,
         }
     }
 
-    pub fn to_symlink(&self) -> Option<&SSymlink> {
+    pub fn to_dir(self) -> Option<SDir> {
+        match self {
+            SVnode::Dir(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    pub fn as_symlink(&self) -> Option<&SSymlink> {
+        match self {
+            SVnode::Symlink(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn to_symlink(self) -> Option<SSymlink> {
         match self {
             SVnode::Symlink(s) => Some(s),
             _ => None,

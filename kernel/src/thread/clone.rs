@@ -3,7 +3,7 @@
 
 use core::ops::ControlFlow;
 
-use alloc::{sync::{Arc, Weak}, vec};
+use alloc::{sync::Arc, vec};
 
 use bitflags::bitflags;
 use nexus_error::{return_errno_with_message, Errno, Result};
@@ -16,9 +16,7 @@ use ostd::{
 
 use crate::{
     thread::{
-        id, task_future, ThreadLocalData, ThreadSharedInfo, ThreadState,
-        ThreadGroup,
-        fd_table::FdTable,
+        fd_table::FdTable, id, task_future, ThreadFuture, ThreadGroup, ThreadLocalData, ThreadSharedInfo, ThreadState
     },
     vm::ProcessVm,
 };
@@ -91,8 +89,16 @@ async fn clone_thread(
         parent.fd_table.dup_table().await
     };
 
+    // ThreadSharedInfo 
+    let child_shared = Arc::new(ThreadSharedInfo {
+        tid: id::alloc(),
+        parent: parent.shared_info.parent.clone(),
+        children: GuardRwArc::new(vec![]),
+        lifecycle: parent.shared_info.lifecycle.clone(),
+    });
+    tgroup.attach(child_shared.clone());
+
     spawn_child(
-        parent.shared_info.parent.clone(),
         parent,
         uc,
         child_vm,
@@ -102,6 +108,7 @@ async fn clone_thread(
         child_stack,
         tls,
         false,
+        child_shared,
     )
     .await
 }
@@ -121,9 +128,10 @@ async fn clone_process(
         Arc::new(ProcessVm::fork_from(&parent.process_vm).await?)
     };
 
+    let tid = id::alloc();
     // 创建新的线程组（进程）
     let tgroup_leader_info = Arc::new(ThreadSharedInfo {
-        tid: id::alloc(),
+        tid,
         parent: Arc::downgrade(&parent.shared_info),
         children: GuardRwArc::new(vec![]),
         lifecycle: parent.shared_info.lifecycle.clone(),
@@ -143,8 +151,14 @@ async fn clone_process(
         Arc::downgrade(&parent.thread_group.leader())
     };
 
+    let child_shared = Arc::new(ThreadSharedInfo {
+        tid,
+        parent: parent_process,
+        children: GuardRwArc::new(vec![]),
+        lifecycle: parent.shared_info.lifecycle.clone(),
+    });
+
     spawn_child(
-        parent_process,
         parent,
         uc,
         child_vm,
@@ -154,15 +168,16 @@ async fn clone_process(
         child_stack,
         tls,
         true,
+        child_shared,
     )
     .await
 }
 
 // 公共：真正生成并调度子 Task  
 async fn spawn_child(
-    parent_process: Weak<ThreadSharedInfo>,
+    // parent_process: Weak<ThreadSharedInfo>,
     parent_thread: &mut ThreadState,
-    _uc: &mut UserContext,
+    uc: &mut UserContext,
     child_vm: Arc<ProcessVm>,
     tgroup: Arc<ThreadGroup>,
     fd_table: Arc<FdTable>,
@@ -170,21 +185,14 @@ async fn spawn_child(
     child_stack: usize,
     tls: usize,
     is_child_process: bool,
+    child_shared: Arc<ThreadSharedInfo>,
 ) -> Result<u64> {
-    let new_tid = id::alloc();
+    let new_tid = child_shared.tid;
 
-    // ThreadSharedInfo 
-    let child_shared = Arc::new(ThreadSharedInfo {
-        tid: new_tid,
-        parent: parent_process,
-        children: GuardRwArc::new(vec![]),
-        lifecycle: parent_thread.shared_info.lifecycle.clone(),
-    });
-    tgroup.attach(child_shared.clone());
 
     // 用户上下文 
     let user_space = parent_thread.task.user_space().unwrap().clone();
-    let mut child_uc = user_space.user_mode().context().clone();
+    let mut child_uc = uc.clone();
     child_uc.set_syscall_return_value(0); // 子线程/进程得 0
     if child_stack != 0 {
         child_uc.set_stack_pointer(child_stack);
@@ -205,6 +213,8 @@ async fn spawn_child(
             .build(),
     );
 
+    
+    let vm_space = child_vm.root_vmar().vm_space().clone();
     // ThreadState 
     let child_ts = ThreadState {
         task: child_task.clone(),
@@ -219,7 +229,10 @@ async fn spawn_child(
         parent_process.children.write().push(child_shared);
     }
 
+    let future = task_future(child_ts);
+    let future = ThreadFuture::new(vm_space, future);
+
     // 调度 
-    child_task.run(task_future(child_ts));
+    child_task.run(future);
     Ok(new_tid)
 }

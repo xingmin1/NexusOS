@@ -9,7 +9,7 @@ mod utils;
 
 use core::{any::Any, borrow::Borrow, future::Future, ops::Deref, option::Option, ptr::NonNull};
 
-use maitake::task::JoinHandle;
+pub use maitake::task::JoinHandle;
 pub use maitake::{
     future::yield_now,
     time::{sleep, Duration},

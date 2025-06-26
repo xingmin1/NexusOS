@@ -15,7 +15,6 @@ use riscv::{
 pub use super::trap::GeneralRegs as RawGeneralRegs;
 use super::trap::{handle_interrupt, TrapFrame, UserContext as RawUserContext};
 use crate::{
-    early_println,
     task::scheduler,
     user::{ReturnReason, UserContextApi, UserContextApiInternal},
 };
@@ -146,7 +145,6 @@ impl UserContextApiInternal for UserContext {
                 Trap::Exception(e) => {
                     let stval = riscv::register::stval::read();
                     log::trace!("Exception, scause: {e:?}, stval: {stval:#x?}");
-                    early_println!("Exception, scause: {:?}, stval: {:#x?}", e, stval);
                     self.cpu_exception_info = CpuExceptionInfo { code: e, stval };
                     break ReturnReason::UserException;
                 }

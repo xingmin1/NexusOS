@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 use ostd::sync::GuardRwArc;
 
 use crate::thread::ThreadSharedInfo;
-use crate::thread::id;
 
 /// 线程组 —— 等价于 Linux 概念里的 *process*。
 pub struct ThreadGroup {
@@ -41,10 +40,4 @@ impl ThreadGroup {
     pub fn leader(&self) -> Arc<ThreadSharedInfo> {
         self.members.read().first().unwrap().clone()
     }
-}
-
-/// 为 *fork*（非 CLONE_THREAD）预留：生成新 thread‑group id。
-/// 当前实现沿用 tid 分配器，简化 id 管理。
-pub fn alloc_tgid() -> u64 {
-    id::alloc()
 }

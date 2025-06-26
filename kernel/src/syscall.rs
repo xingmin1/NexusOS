@@ -1,9 +1,13 @@
+mod fs;
+
 use core::{ffi::c_long, ops::ControlFlow};
 
 use nexus_error::{return_errno_with_message, Result};
 use ostd::{cpu::UserContext, user::UserContextApi};
 use syscall_numbers::native::*;
+use tracing::warn;
 
+use crate::syscall::fs::{do_close, do_fstat, do_getdents64, do_linkat, do_mkdirat, do_mount, do_openat, do_read, do_umount2, do_unlinkat, do_write};
 use crate::thread::{clone::do_clone, execve::do_execve, get_pid::do_getpid, get_ppid::do_getppid, wait::do_wait4, ThreadState};
 use crate::thread::exit::do_exit;
 
@@ -25,7 +29,19 @@ pub async fn syscall(state: &mut ThreadState, context: &mut UserContext) -> Resu
         SYS_execve => do_execve(state, context).await,
         SYS_getpid => do_getpid(state, context).await,
         SYS_getppid => do_getppid(state, context).await,
-        _ => {
+        SYS_openat => do_openat(state, context).await,
+        SYS_close => do_close(state, context).await,
+        SYS_read => do_read(state, context).await,
+        SYS_write => do_write(state, context).await,
+        SYS_getdents64 => do_getdents64(state, context).await,
+        SYS_linkat => do_linkat(state, context).await,
+        SYS_unlinkat => do_unlinkat(state, context).await,
+        SYS_mkdirat => do_mkdirat(state, context).await,
+        SYS_mount => do_mount(state, context).await,
+        SYS_umount2 => do_umount2(state, context).await,
+        SYS_fstat => do_fstat(state, context).await,
+        num => {
+            warn!("syscall not implemented: number={}, name={}, args={:?}", num, sys_call_name(num).unwrap_or("unknown"), context.syscall_arguments());
             return_errno_with_message!(nexus_error::Errno::ENOSYS, "syscall not implemented")
         }
     }

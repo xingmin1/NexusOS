@@ -13,20 +13,12 @@ use core::{
 use bitflags::bitflags;
 use ostd::sync::RwLock;
 
-use vfs::{FileOpen, PathBuf, SDirHandle, SFileHandle};
-
-bitflags! {
-    #[derive(Default, Clone, Copy, Debug)]
-    pub struct FdFlags: u8 {
-        /// `FD_CLOEXEC` —— exec 成功后自动关闭
-        const CLOEXEC = 0b0000_0001;
-    }
-}
+use vfs::{FileOpen, PathBuf, SDir, SDirHandle, SFile, SFileHandle, SVnode};
 
 #[derive(Clone)]
 pub enum FdObject {
-    File(Arc<SFileHandle>),
-    Dir (Arc<SDirHandle>),
+    File(SFileHandle),
+    Dir (SDirHandle),
 }
 
 impl FdObject {
@@ -34,18 +26,47 @@ impl FdObject {
     pub fn is_file(&self) -> bool {
         matches!(self, Self::File(_))
     }
+
+    pub fn as_file(&self) -> Option<&SFileHandle> {
+        match self {
+            Self::File(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    pub fn as_dir(&self) -> Option<&SDirHandle> {
+        match self {
+            Self::Dir(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    pub fn vnode(&self) -> SVnode {
+        match self {
+            Self::File(f) => f.vnode().into(),
+            Self::Dir(d) => d.vnode().into(),
+        }
+    }
 }
 
 /// 表项：对象 + 描述符级 flag
 #[derive(Clone)]
 pub struct FdEntry {
     pub obj:   FdObject,
-    pub flags: FdFlags,
+    pub flags: FileOpen,
 }
 
 impl FdEntry {
-    pub fn new(obj: FdObject, flags: FdFlags) -> Self {
+    pub fn new(obj: FdObject, flags: FileOpen) -> Self {
         Self { obj, flags }
+    }
+
+    pub fn new_file(file: SFileHandle, flags: FileOpen) -> Self {
+        Self { obj: FdObject::File(file), flags }
+    }
+
+    pub fn new_dir(dir: SDirHandle, flags: FileOpen) -> Self {
+        Self { obj: FdObject::Dir(dir), flags }
     }
 }
 
@@ -103,16 +124,16 @@ impl FdTable {
 
     async fn fill_std(&self, fd: u32, src: StdIoSource) -> Result<()> {
         // 将不同来源统一转换成句柄
-        let (handle, default_flags) = match src {
+        let (handle, fo) = match src {
             StdIoSource::Null => open_path("/dev/null", fd == STDIN).await?,
             StdIoSource::Console => open_path("/dev/console", fd == STDIN).await?,
             StdIoSource::Serial => open_path("/dev/serial", fd == STDIN).await?,
             StdIoSource::Path(p, fo) => open_path(p, fo.access().is_readable()).await?,
-            StdIoSource::Preopened(h, _) => (h, FdFlags::empty()),
+            StdIoSource::Preopened(h, fo) => (h, fo),
         };
         // 直接写表，不走 alloc_fd，避免冲突
         let mut w = self.map.write().await;
-        w.insert(fd, FdEntry::new(FdObject::File(Arc::new(handle)), default_flags));
+        w.insert(fd, FdEntry::new(FdObject::File(handle), fo));
         self.next.fetch_max(3, Ordering::Relaxed); // 以后分配从 3 开始
         Ok(())
     }
@@ -182,14 +203,14 @@ impl FdTable {
         let entry = self.get(oldfd).await?; // 克隆
         let mut cloned = entry.clone();
         if set_cloexec {
-            cloned.flags.insert(FdFlags::CLOEXEC);
+            cloned.flags.cloexec();
         }
         // dup2 语义：若 old==new 直接返回
         if oldfd == min_fd {
             self.get_entry_mut(oldfd, |_| ()).await?;
             // 更新 flags（dup3 可改变 cloexec）
             if set_cloexec {
-                self.get_entry_mut(oldfd, |e| e.flags.insert(FdFlags::CLOEXEC)).await?;
+                self.get_entry_mut(oldfd, |e| e.flags.cloexec()).await?;
             }
             return Ok(oldfd);
         }
@@ -213,7 +234,7 @@ impl FdTable {
     }
 
     /// 更新 flags
-    pub async fn set_flags(&self, fd: u32, flags: FdFlags) -> Result<()> {
+    pub async fn set_flags(&self, fd: u32, flags: FileOpen) -> Result<()> {
         self.get_entry_mut(fd, |e| e.flags = flags).await
     }
 
@@ -221,7 +242,7 @@ impl FdTable {
     pub async fn clear_cloexec_on_exec(&self) {
         let mut tbl = self.map.write().await;
         tbl.retain(|_, ent| {
-            let keep = !ent.flags.contains(FdFlags::CLOEXEC);
+            let keep = !ent.flags.is_cloexec();
             keep
         });
         // 重置 next 以便快速复用低位 fd
@@ -235,7 +256,7 @@ impl FdTable {
 
 
 async fn open_path(path: &str, read_only: bool)
-        -> Result<(SFileHandle, FdFlags)> {
+        -> Result<(SFileHandle, FileOpen)> {
     use vfs::{get_path_resolver, FileOpenBuilder};
 
     let mut p = PathBuf::new(path)?;
@@ -245,6 +266,7 @@ async fn open_path(path: &str, read_only: bool)
     } else {
         FileOpenBuilder::new().read_write().build().unwrap()
     };
-    let handle = vnode.to_file().unwrap().clone().open(fo).await?;
-    Ok((handle, FdFlags::empty()))
+    let file = vnode.to_file().unwrap().open(fo).await?;
+
+    Ok((file, fo))
 }

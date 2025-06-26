@@ -214,6 +214,7 @@ dependencies = [
  "elf_loader",
  "nexus-error",
  "ostd",
+ "pin-project-lite",
  "syscall-numbers",
  "tracing 0.1.41",
  "typeflags",

@@ -31,7 +31,7 @@ impl DevFs {
         };
         Arc::new_cyclic(|me| {
             let root = Arc::new(DevVnode::Directory(DirData {
-                fs: me.upgrade().unwrap(),
+                fs: me.clone(),
                 id: 1,
                 children: RwLock::new(BTreeMap::new()),
                 metadata: RwLock::new(root_meta),
@@ -71,7 +71,7 @@ impl DevFs {
             rdev: None,
         };
         let v = Arc::new(DevVnode::CharDevice(CharData {
-            fs: self.clone(),
+            fs: Arc::downgrade(self),
             id: vnode_id,
             dev,
             metadata: RwLock::new(meta),

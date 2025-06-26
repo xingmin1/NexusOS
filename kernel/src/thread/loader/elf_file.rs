@@ -15,7 +15,7 @@ impl ExtFile {
         let mut abs_path = PathBuf::new(abs_path)?;
         let vnode = get_path_resolver().resolve(&mut abs_path).await?;
         let len   = vnode.metadata().await?.size;
-        let handle = vnode.to_file().unwrap().clone().open(FileOpenBuilder::new().read_only().build().unwrap()).await?;
+        let handle = vnode.as_file().unwrap().clone().open(FileOpenBuilder::new().read_only().build().unwrap()).await?;
         Ok((abs_path, Self { vnode_handle: Arc::new(handle), len: len as usize }))
     }
 

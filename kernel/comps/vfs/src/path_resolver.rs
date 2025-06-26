@@ -47,7 +47,7 @@ impl<'m> PathResolver<'m> {
     ) -> VfsResult<SVnode> {
         // 预规范化
         let todo = abs_path;
-        if !todo.to_slice().is_absolute() {
+        if !todo.as_slice().is_absolute() {
             return Err(crate::vfs_err_invalid_argument!("path must be absolute"));
         }
 
@@ -57,7 +57,7 @@ impl<'m> PathResolver<'m> {
                 return Err(KernelError::with_message(Errno::ELOOP, "too many symlinks").into());
             }
 
-            match self.walk_one_mount(todo.to_slice()).await? {
+            match self.walk_one_mount(todo.as_slice()).await? {
                 Step::Done(v)      => return Ok(v),
                 Step::Restart(p) => { *todo = p; depth += 1; }
             }
@@ -93,7 +93,7 @@ impl<'m> PathResolver<'m> {
             let child = if let Some(v) = self.dcache.get(&dir_key, seg).await {
                 v
             } else {
-                let v = current.to_dir().unwrap().lookup(seg).await?;
+                let v = current.as_dir().unwrap().lookup(seg).await?;
                 self.dcache.put(dir_key, seg, v.clone()).await;
                 v
             };
@@ -102,7 +102,7 @@ impl<'m> PathResolver<'m> {
             if child.metadata().await?.kind == VnodeType::SymbolicLink
                 && (self.follow_last_symlink || !is_last)
             {
-                let target = child.to_symlink().unwrap().readlink().await?; // 可能是绝对或相对
+                let target = child.as_symlink().unwrap().readlink().await?; // 可能是绝对或相对
                 // 1. 绝对：直接替换
                 // 2. 相对：基于 path_prefix 构造
                 let mut new_abs = if PathSlice::from(&target).is_absolute() {

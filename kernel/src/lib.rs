@@ -16,15 +16,17 @@ mod syscall;
 
 extern crate alloc;
 
+use alloc::format;
 use ostd::{
-    cpu::{CpuSet, PinCurrentCpu},
-    smp::inter_processor_call,
-    task::{disable_preempt, scheduler::{blocking_future::BlockingFuture, spawn}},
+    arch::qemu::{exit_qemu, QemuExitCode}, cpu::{CpuSet, PinCurrentCpu}, smp::inter_processor_call, task::{disable_preempt, scheduler::spawn}
 };
 use thread::ThreadBuilder;
 use tracing::{debug, info, trace_span, warn};
 #[allow(unused_imports)]
 use nexus_error::{return_errno, return_errno_with_message};
+
+// static TASKS: [&str; 8] = ["clone", "execve", "exit", "fork", "getpid", "getppid", "wait", "waitpid"];
+static TASKS: [&str; 1] = ["clone"];
 
 /// The kernel's boot and initialization process is managed by OSTD.
 /// After the process is done, the kernel's execution environment
@@ -39,10 +41,14 @@ pub fn main() {
 
     spawn(async {
         vfs::init_vfs().await;
-        let thread_span = trace_span!("thread_spawn").entered();
-        ThreadBuilder::new().path("/musl/basic/exit").spawn().block().inspect_err(|e| {
-            warn!("ThreadBuilder::spawn 失败: {:?}", e);
-        });
+        // let thread_span = trace_span!("thread_spawn").entered();
+        for task in TASKS {
+            let (_, handle) = ThreadBuilder::new().path(&format!("/musl/basic/{}", task)).spawn().await.unwrap();
+            handle.await.inspect_err(|e| {
+                warn!("ThreadBuilder::spawn 失败: {:?}", e);
+            });
+        }
+        ostd::task::scheduler::stop_running();
     }, None);
 
     info!("内核主函数完成设置，BSP 进入空闲循环");
@@ -58,12 +64,13 @@ pub fn main() {
 
     let mut core = ostd::task::scheduler::Core::new();
     core.run();
+    exit_qemu(QemuExitCode::Success);
 }
 
 fn ap_main() -> ! {
     let cpu_id;
     {
-        let disable_preempt = disable_preempt();
+        let disable_preempt: ostd::task::DisabledPreemptGuard = disable_preempt();
         cpu_id = disable_preempt.current_cpu().as_usize();
         info!(cpu_id, "AP 进入 ap_main 函数，准备进入空闲循环");
     }

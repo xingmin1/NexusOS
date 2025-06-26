@@ -226,17 +226,23 @@ pub async fn do_unlinkat(
 }
 
 pub async fn do_mkdirat(
-    state: &ThreadState,
+    state: &mut ThreadState,
     cx: &mut UserContext,
 ) -> Result<ControlFlow<i32, Option<isize>>> {
     let [dirfd, path_ptr, mode, ..] = cx.syscall_arguments();
-    let fd_table = &state.fd_table;
-    let entry = fd_table.get(dirfd as u32).await?;
-    let dir = entry
-        .obj
-        .as_dir()
-        .ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?
-        .vnode();
+    let dir = if dirfd == AT_FDCWD as _ {
+        get_path_resolver().resolve(&mut state.cwd).await?.to_dir().ok_or_else(|| {
+            errno_with_message(Errno::ENOTDIR, "AT_FDCWD not a directory")
+        })?
+    } else {
+        let entry = state.fd_table.get(dirfd as u32).await?;
+        entry
+            .obj
+            .as_dir()
+            .ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?
+            .vnode()
+    };
+    
     let name = copy_cstr_from_user(&state.process_vm, path_ptr)?;
     let ret = dir
         .create(
@@ -253,7 +259,7 @@ pub async fn do_mkdirat(
 
 #[allow(unused_variables)]
 pub async fn do_mount(
-    _state: &ThreadState,
+    state: &ThreadState,
     cx: &mut UserContext,
 ) -> Result<ControlFlow<i32, Option<isize>>> {
     let [special_ptr, dir_ptr, fstype_ptr, flags, data_ptr, ..] = cx.syscall_arguments();
@@ -262,13 +268,19 @@ pub async fn do_mount(
         if ptr == 0 {
             Err(errno_with_message(Errno::EINVAL, "null pointer"))
         } else {
-            copy_cstr_from_user(&_state.process_vm, ptr)
+            copy_cstr_from_user(&state.process_vm, ptr)
         }
     };
     let special = read_opt(special_ptr)?;
     let dir = read_opt(dir_ptr)?;
     let fstype = read_opt(fstype_ptr)?;
-    let data = read_opt(data_ptr)?;
+    let data = read_opt(data_ptr).unwrap_or_default();
+
+    let dir = if dir.starts_with("./") {
+        state.cwd.as_slice().join(&dir)?.to_string()
+    } else {
+        dir
+    };
 
     let vfs_manager = vfs::VFS_MANAGER.get();
 
@@ -287,13 +299,17 @@ pub async fn do_mount(
     }
 }
 
-pub async fn do_umount2(_state: &ThreadState, cx: &mut UserContext) -> Result<ControlFlow<i32, Option<isize>>> {
+pub async fn do_umount2(state: &ThreadState, cx: &mut UserContext) -> Result<ControlFlow<i32, Option<isize>>> {
     let [target_ptr, _flags, ..] = cx.syscall_arguments();
     if target_ptr == 0 {
         return Err(errno_with_message(Errno::EINVAL, "null pointer"));
     }
-    let target = copy_cstr_from_user(&_state.process_vm, target_ptr)?;
-    let path = PathBuf::new(target)?;
+    let target = copy_cstr_from_user(&state.process_vm, target_ptr)?;
+    let path = if target.starts_with("./") {
+        state.cwd.as_slice().join(&target)?
+    } else {
+        PathBuf::new(target)?
+    };
     let vfs_manager = vfs::VFS_MANAGER.get();
     let (_, mount_info, _) = vfs_manager.locate_mount(path.as_slice()).await?;
     vfs_manager.unmount(mount_info.id).await?;

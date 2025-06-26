@@ -35,6 +35,12 @@ pub struct MountInfo {
     pub fs: SFileSystem,
 }
 
+impl core::fmt::Debug for MountInfo {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "MountInfo {{ id: {}, fs: {{ id: {}, type_name: {:?} }} }}", self.id, self.fs.id(), self.fs.fs_type_name())
+    }
+}
+
 /// **挂载点注册表** —— 需要最长前缀匹配
 struct MountRegistry {
     table: RwLock<Map<PathBuf, MountInfo>>,

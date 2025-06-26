@@ -18,6 +18,7 @@ use alloc::{
 use nexus_error::Error;
 use pin_project_lite::pin_project;
 use syscall_numbers::riscv32::sys_call_name;
+use vfs::{PathBuf, PathSlice};
 use core::{future::Future, ops::ControlFlow, pin::Pin, str, task::{Context, Poll}};
 
 use exception::{handle_page_fault_from_vmar, PageFaultInfo};
@@ -51,6 +52,7 @@ pub struct ThreadState {
     pub process_vm: Arc<ProcessVm>,
     // pub memory_manager: Arc<MemoryManager>,
     pub fd_table: Arc<FdTable>,
+    pub cwd: PathBuf,
     // pub signal_mask: GuardRwLock<SigSet>,
     // pub signal_actions: GuardRwLock<SigActions>,
     // pub exit_signal: GuardRwLock<Option<SignalInfo>>,
@@ -115,9 +117,11 @@ impl<'a> ThreadBuilder<'a> {
 
     pub async fn spawn(&mut self) -> Result<(Arc<ThreadSharedInfo>, JoinHandle<()>)> {
         let process_vm = Arc::new(ProcessVm::alloc());
+        let path = self.path.take().unwrap();
+        let cwd = PathBuf::new(path)?.as_slice().strip_suffix().unwrap_or(PathSlice::from("/")).to_owned_buf();
         let user_task_options = create_user_task(
             &process_vm,
-            self.path.take().unwrap(),
+            path,
             self.argv.take().unwrap_or_default(),
             self.envp.take().unwrap_or_default(),
         )
@@ -146,6 +150,7 @@ impl<'a> ThreadBuilder<'a> {
             shared_info: thread_shared_info.clone(),
             user_brk: 0,
             fd_table,
+            cwd,
         };
 
         let vm_space = process_vm.root_vmar().vm_space().clone();

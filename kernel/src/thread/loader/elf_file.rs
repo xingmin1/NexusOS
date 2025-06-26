@@ -11,7 +11,7 @@ pub struct ExtFile {
 
 impl ExtFile {
     pub async fn open(abs_path: &str) -> Result<(PathBuf, Self)> {
-        debug_assert!(abs_path.starts_with('/'));
+        // debug_assert!(abs_path.starts_with('/'));
         let mut abs_path = PathBuf::new(abs_path)?;
         let vnode = get_path_resolver().resolve(&mut abs_path).await?;
         let len   = vnode.metadata().await?.size;

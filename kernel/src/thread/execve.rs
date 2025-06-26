@@ -1,6 +1,7 @@
 use core::ops::ControlFlow;
 
 use alloc::{ffi::CString, vec::Vec};
+use vfs::PathSlice;
 use crate::{
     thread::{init_stack::{MAX_ARGV_NUMBER, MAX_ARG_LEN, MAX_ENVP_NUMBER, MAX_ENV_LEN}, loader::load_elf_to_vm, ThreadState}, vm::ProcessVm,
 };
@@ -9,12 +10,17 @@ use ostd::{mm::Vaddr, user::UserContextApi};
 
 pub async fn do_execve(state: &mut ThreadState, uc: &mut ostd::cpu::UserContext) -> Result<ControlFlow<i32, Option<isize>>> {
     let [path_ptr, argv_ptr_ptr, envp_ptr_ptr, ..] = uc.syscall_arguments();
-    let new_path = state.process_vm
+    let mut new_path = state.process_vm
         .read_cstring(path_ptr, 4096)?
         .into_string()
         .map_err(|_| errno_with_message(Errno::EINVAL, "path is not a valid C string"))?;
     let argv = read_cstring_vec(argv_ptr_ptr, MAX_ARGV_NUMBER, MAX_ARG_LEN, &state.process_vm)?;
     let envp = read_cstring_vec(envp_ptr_ptr, MAX_ENVP_NUMBER, MAX_ENV_LEN, &state.process_vm)?;
+
+    let path = PathSlice::new(&new_path)?;
+    if !path.is_absolute() {
+        new_path = state.cwd.as_slice().join(&new_path)?.to_string();
+    }
 
     let elf_info = load_elf_to_vm(&state.process_vm, &new_path, argv, envp).await?;
 

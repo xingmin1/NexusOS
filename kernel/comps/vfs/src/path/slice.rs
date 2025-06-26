@@ -72,6 +72,12 @@ impl<'a> PathSlice<'a> {
         }
     }
 
+    /// 去后缀；成功返回父目录
+    pub fn strip_suffix(self) -> Option<Self> {
+        let last = self.0.rfind('/')?;
+        Some(Self(&self.0[..last + 1]))
+    }
+
     /// 连接单个组件；组件已保证无 `/`
     pub fn join(self, comp: &str) -> crate::VfsResult<super::PathBuf> {
         if comp.is_empty() || comp.contains('/') {

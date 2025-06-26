@@ -223,6 +223,7 @@ async fn spawn_child(
         shared_info: child_shared.clone(),
         fd_table,
         user_brk: parent_thread.user_brk,
+        cwd: parent_thread.cwd.clone(),
     };
 
     if is_child_process && let Some(parent_process) = child_shared.parent.upgrade() {

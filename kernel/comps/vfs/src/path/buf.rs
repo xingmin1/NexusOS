@@ -28,6 +28,8 @@ impl PathBuf {
     #[inline] pub(crate) fn from_str_unchecked(s: String) -> Self { Self(s) }
 
     pub fn as_slice(&self) -> PathSlice { PathSlice::from(self) }
+
+    pub fn to_string(self) -> String { self.0 }
 }
 
 impl core::fmt::Display for PathBuf {

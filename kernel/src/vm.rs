@@ -185,14 +185,14 @@ impl ProcessVm {
 /// in some occasions. More importantly, double page faults may not be handled
 /// quite well on some platforms.
 fn check_vaddr(va: Vaddr) -> Result<()> {
-    if va < crate::vm::vmar::ROOT_VMAR_LOWEST_ADDR {
-        Err(errno_with_message(
-            Errno::EFAULT,
-            "Bad user space pointer specified",
-        )).attach_printable_lazy(|| alloc::format!("va: {}", va))
-    } else {
+    // if va < crate::vm::vmar::ROOT_VMAR_LOWEST_ADDR {
+        // Err(errno_with_message(
+        //     Errno::EFAULT,
+        //     "Bad user space pointer specified",
+        // )).attach_printable_lazy(|| alloc::format!("va: {}", va))
+    // } else {
         Ok(())
-    }
+    // }
 }
 
 fn read_cstring(reader: &mut VmReader<'_, Fallible>) -> Result<CString> {

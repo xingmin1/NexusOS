@@ -9,8 +9,7 @@ use ostd::{
     cpu::UserContext, mm::{FallibleVmRead, VmReader, VmWriter}, user::UserContextApi, Pod
 };
 use vfs::{
-    self, get_path_resolver, FileMode, FileOpen, PathBuf
-    , SVnode, VnodeType,
+    self, get_path_resolver, FileMode, FileOpen, PathBuf, PathSlice, SVnode, VnodeType
 };
 use crate::{
     thread::{
@@ -29,45 +28,67 @@ fn copy_cstr_from_user(vm: &ProcessVm, uaddr: usize) -> Result<String> {
         .map_err(|_| errno_with_message(Errno::EINVAL, "path is not a valid utf-8 string"))
 }
 
-/// 根据 dirfd+用户字符串解析成内核 PathBuf。
-async fn vnode_from_user_at(state: &ThreadState, dirfd: i32, user_ptr: usize) -> Result<SVnode> {
-    let raw = copy_cstr_from_user(&state.process_vm, user_ptr)?;
-    // 绝对路径直接返回
-    if raw.starts_with('/') {
-        let mut path = PathBuf::new(raw)?;
-        let vnode = get_path_resolver().resolve(&mut path).await?;
-        return Ok(vnode);
-    }
-    // 相对路径：AT_FDCWD→cwd；否则 dirfd 必须是目录
-    if dirfd == AT_FDCWD {
-        todo!()
-    }
-    // 从 fd_table 查 dir
-    let entry = state.fd_table.get(dirfd as u32).await?;
-    let dir = entry
-        .obj
-        .as_dir()
-        .ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?;
-
-    dir.vnode().lookup(raw.as_str()).await
-}
-
 /// 成功返回新分配的进程级 fd
 pub async fn do_openat(
     state: &mut ThreadState,
     cx: &mut UserContext,
 ) -> Result<ControlFlow<i32, Option<isize>>> {
     let [dirfd, path_ptr, flags, _mode, ..] = cx.syscall_arguments();
-    let vnode = vnode_from_user_at(state, dirfd as i32, path_ptr as usize).await?;
+    
     let fo = FileOpen::new(flags as u32)
         .change_context_lazy(|| Error::with_message(Errno::EINVAL, "invalid open flags"))?;
-    let fd = state
-        .fd_table
-        .alloc(
-            FdEntry::new_file(vnode.to_file().unwrap().open(fo.into()).await?, fo.into()),
-            0,
-        )
-        .await?;
+
+    let raw = copy_cstr_from_user(&state.process_vm, path_ptr)?;
+    // 绝对路径直接返回
+    let (vnode, path, dir) = if raw.starts_with('/') {
+        let mut path = PathBuf::new(&raw)?;
+        (get_path_resolver().resolve(&mut path).await, Some(path), None)
+    } else if dirfd == AT_FDCWD as _ || raw.starts_with("./") || raw == "." {
+        let mut path = state.cwd.as_slice().join(&raw)?;
+        (get_path_resolver().resolve(&mut path).await, Some(path), None)
+    } else {
+        let entry = state.fd_table.get(dirfd as u32).await?;
+        let dir = entry
+            .obj
+            .as_dir()
+            .ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?;
+        
+        (dir.vnode().lookup(raw.as_str()).await, None, Some(dir.clone()))
+    };
+
+    let vnode = if let Err(e) = vnode {
+        if e.downcast_ref::<Error>().map(|e| e.error() as _).unwrap_or(-1) == Errno::ENOENT as i32 && fo.should_create() {
+            if let Some(path) = path {
+                let dir = get_path_resolver().resolve(&mut path.as_slice().strip_suffix().unwrap_or(PathSlice::from("/")).to_owned_buf()).await?;
+                let dir = dir.as_dir().ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?;
+                dir.create(raw.as_str(), VnodeType::File, FileMode::from_bits_truncate(0o666), None).await?
+            } else if let Some(dir) = dir {
+                dir.vnode().create(raw.as_str(), VnodeType::File, FileMode::from_bits_truncate(0o666), None).await?
+            } else {
+                return Err(e);
+            }
+        } else {
+            return Err(e);
+        }
+    } else {
+        vnode.unwrap()
+    };
+
+    let fd = if vnode.is_dir() || fo.is_directory() {
+        state.fd_table.alloc(
+            FdEntry::new_dir(
+                vnode.to_dir().unwrap().open_dir().await?, 
+                fo.into()
+            ), 0
+        ).await?
+    } else {
+        state.fd_table.alloc(
+            FdEntry::new_file(
+                vnode.to_file().unwrap().open(fo.into()).await?,
+                fo.into()
+            ), 0
+        ).await?
+    };
     Ok(ControlFlow::Continue(Some(fd as isize)))
 }
 

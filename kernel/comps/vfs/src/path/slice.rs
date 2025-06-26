@@ -80,6 +80,11 @@ impl<'a> PathSlice<'a> {
 
     /// 连接单个组件；组件已保证无 `/`
     pub fn join(self, comp: &str) -> crate::VfsResult<super::PathBuf> {
+        if comp.starts_with("./") {
+            return self.join(&comp[2..]);
+        } else if comp == "." {
+            return Ok(self.to_owned_buf());
+        }
         if comp.is_empty() || comp.contains('/') {
             Err(crate::vfs_err_invalid_argument!("bad component"))
         } else if self.is_root() {

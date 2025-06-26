@@ -92,6 +92,13 @@ impl SVnode {
             _ => None,
         }
     }
+
+    pub fn is_dir(&self) -> bool {
+        match self {
+            SVnode::Dir(_) => true,
+            _ => false,
+        }
+    }
 }
 
 /* ---------- From / Into 转换 ---------- */

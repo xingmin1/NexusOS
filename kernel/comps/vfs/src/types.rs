@@ -238,6 +238,7 @@ impl FileOpen {
     #[inline] pub const fn is_append(&self) -> bool { self.status.contains(OpenStatus::APPEND) }
     #[inline] pub const fn is_exclusive(&self) -> bool { self.status.contains(OpenStatus::EXCL) }
     #[inline] pub const fn is_cloexec(&self) -> bool { self.status.contains(OpenStatus::CLOEXEC) }
+    #[inline] pub const fn is_directory(&self) -> bool { self.status.contains(OpenStatus::DIRECTORY) }
 
     pub fn cloexec(mut self) -> Self {
         self.status.insert(OpenStatus::CLOEXEC);

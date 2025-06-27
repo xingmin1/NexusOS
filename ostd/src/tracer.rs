@@ -357,7 +357,7 @@ pub fn init_tracing() {
         .find(|arg| arg.starts_with("ostd.log_level="))
         .map(|arg| arg.split('=').next_back().unwrap_or_default());
 
-    let log_level_str = value.unwrap_or("info");
+    let log_level_str = value.unwrap_or("error");
     let max_level_filter = parse_log_level(log_level_str);
 
     let subscriber = KernelTracer::new(max_level_filter);

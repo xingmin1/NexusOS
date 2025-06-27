@@ -132,7 +132,9 @@ impl UserContextApiInternal for UserContext {
     {
         let ret = loop {
             scheduler::might_preempt().await;
+            log::info!("run");
             self.user_context.run();
+            log::info!("run end");
             match riscv::interrupt::cause::<Interrupt, Exception>() {
                 Trap::Interrupt(interrupt) => {
                     handle_interrupt(interrupt, &mut self.as_trap_frame());

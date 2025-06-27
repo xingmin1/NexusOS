@@ -26,7 +26,7 @@ use tracing::{debug, info, trace_span, warn};
 use nexus_error::{return_errno, return_errno_with_message};
 
 static TASKS: [&str; 16] = ["clone", "execve", "exit", "fork", "getpid", "getppid", "wait", "waitpid", "fstat", "close", "getdents", "mkdir", "open", "read", "openat", "umount"];
-// static TASKS: [&str; 1] = [];
+// static TASKS: [&str; 1] = ["fstat"];
 
 /// The kernel's boot and initialization process is managed by OSTD.
 /// After the process is done, the kernel's execution environment

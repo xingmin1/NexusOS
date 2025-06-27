@@ -146,7 +146,7 @@ OSDK_SRC_FILES := \
 	$(shell find osdk/Cargo.toml osdk/Cargo.lock osdk/src -type f)
 
 .PHONY: all
-all: build
+all: kernel-rv
 
 # Install or update OSDK from source
 # To uninstall, do `cargo uninstall cargo-osdk`
@@ -286,3 +286,8 @@ clean:
 	@$(MAKE) --no-print-directory -C test clean
 	@echo "Uninstalling OSDK"
 	@rm -f $(CARGO_OSDK)
+
+# 将编译生成的 ELF 可执行文件复制到项目根目录，命名为 `kernel-rv`
+.PHONY: kernel-rv
+kernel-rv: build
+	@cp target/osdk/aster-nix-osdk-bin.qemu_elf kernel-rv

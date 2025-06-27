@@ -102,7 +102,7 @@ pub(crate) fn enable_all_local() {
 
 pub(crate) fn enable_local() {
     // if !crate::IN_BOOTSTRAP_CONTEXT.load(Ordering::Relaxed) {
-    //     early_println!("enable_local");
+    //     crate::prelude::println!("enable_local");
     // }
     unsafe {
         riscv::interrupt::enable();
@@ -112,7 +112,7 @@ pub(crate) fn enable_local() {
 #[track_caller]
 pub(crate) fn disable_local() {
     // if !crate::IN_BOOTSTRAP_CONTEXT.load(Ordering::Relaxed) {
-    //     early_println!("disable_local, caller: {}", core::panic::Location::caller());
+    //     crate::prelude::println!("disable_local, caller: {}", core::panic::Location::caller());
     // }
     riscv::interrupt::disable();
 }

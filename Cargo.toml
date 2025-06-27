@@ -23,6 +23,7 @@ members = [
     "kernel/libs/typeflags-util",
     "kernel/libs/block-dev",
     "kernel/comps/vfs",
+    # "target/osdk/aster-nix-run-base",
 ]
 exclude = [
     "osdk",
@@ -50,3 +51,9 @@ lto = true
 panic = "abort"
 # set codegen-units as the smallest number
 codegen-units = 1
+
+[patch.crates-io]
+tracing-log = { git = "https://github.com/tokio-rs/tracing" }
+tracing = { git = "https://github.com/tokio-rs/tracing" }
+tracing-core = { git = "https://github.com/tokio-rs/tracing" }
+tracing-subscriber = { git = "https://github.com/tokio-rs/tracing" }

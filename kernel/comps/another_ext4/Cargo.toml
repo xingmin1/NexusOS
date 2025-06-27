@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bitflags = "2.2.1"
 log = "0.4"
-axsync = { git = "https://github.com/Starry-OS/axsync.git", optional = true }
+axsync = { git = "https://github.com/oscomp/arceos.git", optional = true }
 ostd = { path = "../../../ostd" }
 error-stack = { version = "0.5", default-features = false }
 

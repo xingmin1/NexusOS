@@ -30,7 +30,7 @@ impl<'a> ElfMapper<'a> {
 
         let (ehdr, phdrs) = {
             let mut loader = Loader::<MmapImpl>::new();
-            let mut binary = self.image.as_binary();
+            let mut binary: elf_loader::object::ElfBinary<'_> = self.image.as_binary();
 
             // 解析 ELF Header / PHDR
             let ehdr = loader.read_ehdr(&mut binary).map_err(elf_loader_error_to_errno)?.to_owned();

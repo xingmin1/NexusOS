@@ -176,7 +176,7 @@ initramfs:
 	@$(MAKE) --no-print-directory -C test
 
 .PHONY: build
-build: initramfs $(CARGO_OSDK)
+build: $(CARGO_OSDK)
 	@cd kernel && cargo osdk build $(CARGO_OSDK_ARGS)
 
 .PHONY: tools

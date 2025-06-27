@@ -182,6 +182,7 @@ pub struct DisabledLocalIrqGuard {
 impl !Send for DisabledLocalIrqGuard {}
 
 impl DisabledLocalIrqGuard {
+    #[track_caller]
     fn new() -> Self {
         let was_enabled = irq::is_local_enabled();
         if was_enabled {

@@ -16,6 +16,8 @@
 
 use core::arch::{asm, global_asm};
 
+use riscv::register::sstatus;
+
 use crate::Pod;
 
 #[cfg(target_arch = "riscv32")]
@@ -86,7 +88,7 @@ pub struct TrapFrame {
 }
 
 /// Saved registers on a trap.
-#[derive(Debug, Default, Clone, Copy, Pod)]
+#[derive(Debug, Clone, Copy, Pod)]
 #[repr(C)]
 pub struct UserContext {
     /// General registers
@@ -95,6 +97,16 @@ pub struct UserContext {
     pub sstatus: usize,
     /// Supervisor Exception Program Counter
     pub sepc: usize,
+}
+
+impl Default for UserContext {
+    fn default() -> Self {
+        UserContext {
+            general: GeneralRegs::default(),
+            sstatus: (sstatus::read().bits() | (1 << 5) | (1 << 18) | (1 << 13)) & !(1 << 8),
+            sepc: 0,
+        }
+    }
 }
 
 impl UserContext {

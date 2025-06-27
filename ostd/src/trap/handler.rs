@@ -2,7 +2,7 @@
 
 use spin::Once;
 
-use crate::{arch::irq::IRQ_LIST, cpu_local_cell, task::disable_preempt, trap::TrapFrame};
+use crate::{arch::irq::{is_local_enabled, IRQ_LIST}, cpu_local_cell, task::disable_preempt, trap::TrapFrame};
 
 static BOTTOM_HALF_HANDLER: Once<fn()> = Once::new();
 
@@ -38,11 +38,16 @@ fn process_bottom_half() {
     // This needs to be done before enabling the local interrupts to
     // avoid race conditions.
     let preempt_guard = disable_preempt();
-    crate::arch::irq::enable_local();
+    let is_local_enable = is_local_enabled();
+    if !is_local_enable {
+        crate::arch::irq::enable_local();
+    }
 
     handler();
 
-    crate::arch::irq::disable_local();
+    if !is_local_enable {
+        crate::arch::irq::disable_local();
+    }
     drop(preempt_guard);
 }
 

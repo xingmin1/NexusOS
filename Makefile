@@ -180,13 +180,13 @@ setup_cargo_config:
 initramfs:
 	@$(MAKE) --no-print-directory -C test
 
-.PHONY: prepare_osdk_bundle
-prepare_osdk_bundle:
-	@mkdir -p target/osdk/aster-nix-run-base
-	@cp Cargo.lock target/osdk/aster-nix-run-base/Cargo.lock
+# .PHONY: prepare_osdk_bundle
+# prepare_osdk_bundle:
+# 	@mkdir -p target/osdk/aster-nix-run-base
+# 	@cp Cargo.lock target/osdk/aster-nix-run-base/Cargo.lock
 
 .PHONY: build
-build: prepare_osdk_bundle setup_cargo_config $(CARGO_OSDK)
+build: setup_cargo_config $(CARGO_OSDK)
 	@cd kernel && cargo osdk build $(CARGO_OSDK_ARGS)
 
 .PHONY: tools

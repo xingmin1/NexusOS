@@ -185,10 +185,21 @@ fn do_new_base_crate(
     add_manifest_dependency(dep_crate_name, dep_crate_path, link_unit_test_runner);
 
     // Copy the manifest configurations from the target crate to the base crate
-    copy_profile_configurations(workspace_root);
+    copy_profile_configurations(&workspace_root);
 
     // Generate the features by copying the features from the target crate
     add_feature_entries(dep_crate_name, &dep_crate_features);
+
+    // Copy workspace Cargo.lock to base crate to support vendored builds
+    if let Ok(lock_path) = fs::canonicalize(workspace_root.join("Cargo.lock")) {
+        let dest = base_crate_path.as_ref().join("Cargo.lock");
+        // 仅当目标不存在时复制，避免无谓 IO
+        if !dest.exists() {
+            if let Err(e) = fs::copy(&lock_path, &dest) {
+                warn!("Failed to copy Cargo.lock to base crate: {}", e);
+            }
+        }
+    }
 
     // Get back to the original directory
     std::env::set_current_dir(original_dir).unwrap();

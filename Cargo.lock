@@ -1354,7 +1354,6 @@ dependencies = [
  "cordyceps",
  "futures",
  "futures-util",
- "loom",
  "maitake-sync",
  "mycelium-bitfield",
  "mycelium-util",

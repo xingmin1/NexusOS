@@ -48,17 +48,29 @@ virtio-drivers = { path = "libs/virtio-drivers", version = "0.11.0" }
 error-stack = { version = "0.5", default-features = false }
 futures = { version = "0.3", default-features = false }
 
+compiler_builtins = "=0.1.143"
+hashbrown = "=0.15.2"
+rustc-demangle = "=0.1.24"
+dlmalloc = "=0.2.7"
+libc = "=0.2.169"
+hermit-abi = "=0.4.0"
+r-efi = "=4.5.0"
+r-efi-alloc = "=1.0.0"
+wasi = "=0.11.0"
+fortanix-sgx-abi = "=0.5.0"
+getopts = { version = "=0.2.21", features = ["core"], default-features = false }
+
 [target.x86_64-unknown-none.dependencies]
-x86_64 = "0.14.13"
-x86 = "0.52.0"
-acpi = "5.1.0"
-multiboot2 = "0.23.0"
-iced-x86 = { version = "1.21.0", default-features = false, features = [
-    "no_std",
-    "decoder",
-    "gas",
-], optional = true }
-tdx-guest = { version = "0.1.8", optional = true }
+# x86_64 = "0.14.13"
+# x86 = "0.52.0"
+# acpi = "5.1.0"
+# multiboot2 = "0.23.0"
+# iced-x86 = { version = "1.21.0", default-features = false, features = [
+#     "no_std",
+#     "decoder",
+#     "gas",
+# ], optional = true }
+# tdx-guest = { version = "0.1.8", optional = true }
 
 [target.riscv64gc-unknown-none-elf.dependencies]
 riscv = { version = "0.13.0", features = ["s-mode"] }
@@ -68,10 +80,10 @@ fdt = { version = "0.1.5", features = ["pretty-printing"] }
 crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
 
 [features]
-default = ["zicbom"]
-# The guest OS support for Confidential VMs (CVMs), e.g., Intel TDX
-cvm_guest = ["dep:tdx-guest", "dep:iced-x86"]
-zicbom = []
+# default = ["zicbom"]
+# # The guest OS support for Confidential VMs (CVMs), e.g., Intel TDX
+# cvm_guest = ["dep:tdx-guest", "dep:iced-x86"]
+# zicbom = []
 
 [lints]
 workspace = true

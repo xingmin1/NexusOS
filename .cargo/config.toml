@@ -1,16 +1,27 @@
-[build]
-# 1. 裸机目标三元组
-target = "riscv64gc-unknown-none-elf"
-# 2. 传给 rustc/clippy 的额外 flag：打开 ktest cfg
-rustflags = [
-    "--check-cfg", "cfg(ktest)",
-    "--cfg", "ktest",
-]
+[source.crates-io]
+replace-with = "vendored-sources"
 
-[unstable]
-# nightly 下的 -Zbuild-std 相关选项
-# 把 core、alloc、compiler_builtins 三个库也用 build-std 编译
-build-std = ["core", "alloc", "compiler_builtins"]
-# 给 compiler_builtins 启用内存相关特性
-build-std-features = ["compiler-builtins-mem"]
-# .cargo/config.toml
+[source."git+https://github.com/asterinas/inherit-methods-macro?rev=98f7e3e"]
+git = "https://github.com/asterinas/inherit-methods-macro"
+rev = "98f7e3e"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/asterinas/ostd-pod?rev=c4644be"]
+git = "https://github.com/asterinas/ostd-pod"
+rev = "c4644be"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/asterinas/xarray"]
+git = "https://github.com/asterinas/xarray"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/oscomp/arceos.git"]
+git = "https://github.com/oscomp/arceos.git"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/tokio-rs/tracing"]
+git = "https://github.com/tokio-rs/tracing"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

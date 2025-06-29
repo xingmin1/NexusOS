@@ -95,6 +95,8 @@ async fn clone_thread(
         parent: parent.shared_info.parent.clone(),
         children: GuardRwArc::new(vec![]),
         lifecycle: parent.shared_info.lifecycle.clone(),
+        cpu_times: parent.shared_info.cpu_times.clone(),
+        start_ticks: parent.shared_info.start_ticks,
     });
     tgroup.attach(child_shared.clone());
 
@@ -135,6 +137,8 @@ async fn clone_process(
         parent: Arc::downgrade(&parent.shared_info),
         children: GuardRwArc::new(vec![]),
         lifecycle: parent.shared_info.lifecycle.clone(),
+        cpu_times: parent.shared_info.cpu_times.clone(),
+        start_ticks: parent.shared_info.start_ticks,
     });
     let tgroup = ThreadGroup::new_leader(tgroup_leader_info);
 
@@ -156,6 +160,8 @@ async fn clone_process(
         parent: parent_process,
         children: GuardRwArc::new(vec![]),
         lifecycle: parent.shared_info.lifecycle.clone(),
+        cpu_times: parent.shared_info.cpu_times.clone(),
+        start_ticks: parent.shared_info.start_ticks,
     });
 
     spawn_child(

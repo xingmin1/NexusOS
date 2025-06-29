@@ -12,6 +12,7 @@ pub mod execve;
 pub mod get_ppid;
 pub mod get_pid;
 pub mod sched_yield;
+pub mod nanosleep;
 
 use alloc::{
     ffi::CString, sync::{Arc, Weak}, vec::Vec, vec,
@@ -31,7 +32,7 @@ use ostd::{
 };
 use tracing::{debug, error, info,};
 
-use crate::{error::Result, syscall::syscall, thread::{fd_table::{FdTable, StdIoSource}, state::Lifecycle, thread_group::ThreadGroup}, vm::ProcessVm};
+use crate::{error::Result, syscall::syscall, thread::{fd_table::{FdTable, StdIoSource}, state::Lifecycle, thread_group::ThreadGroup}, time::{CpuTimes, ticks_since_boot}, vm::ProcessVm};
 
 #[derive(Clone)]
 pub struct ThreadSharedInfo {
@@ -39,6 +40,10 @@ pub struct ThreadSharedInfo {
     parent: Weak<ThreadSharedInfo>,
     children: GuardRwArc<Vec<Arc<ThreadSharedInfo>>>,
     lifecycle: Lifecycle,
+    /// CPU 时间统计
+    pub cpu_times: CpuTimes,
+    /// 线程/进程启动时的系统嘀嗒数
+    pub start_ticks: u64,
     // credentials: Arc<Credentials>,
     // namespaces: Arc<NamespaceInfo>,
     // signal_handling: Arc<SignalHandling>,
@@ -137,6 +142,8 @@ impl<'a> ThreadBuilder<'a> {
             parent: Weak::new(),
             children: GuardRwArc::new(vec![]),
             lifecycle: Lifecycle::new(),
+            cpu_times: CpuTimes::default(),
+            start_ticks: ticks_since_boot(),
         });
         let thread_group = ThreadGroup::new_leader(thread_shared_info.clone());
         let thread_local_data = ThreadLocalData {

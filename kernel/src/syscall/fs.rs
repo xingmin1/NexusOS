@@ -290,7 +290,7 @@ pub async fn do_mount(
         // FAKE IMPLEMENTATION
         let vfs_manager = vfs::VFS_MANAGER.get();
         let ret = vfs_manager
-            .mount(None, &dir, "ext4", Default::default())
+            .mount(None, &dir, "devfs", Default::default())
             .await?;
         Ok(ControlFlow::Continue(Some(0 as isize)))
     } else {

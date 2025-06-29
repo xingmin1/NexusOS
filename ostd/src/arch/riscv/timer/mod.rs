@@ -16,9 +16,11 @@ use crate::{
 ///
 /// For system performance reasons, this rate cannot be set too high, otherwise most of the time
 /// is spent executing timer code.
-pub const TIMER_FREQ: u64 = 1000;
+/// 减小timer_freq，以避免中断风暴 (Interrupt Storm)，特别是在用户态下，刚刚进入用户态的那一刻，可能会触发中断风暴。
+pub const TIMER_FREQ: u64 = 200;
 
-pub(crate) static TIMEBASE_FREQ: AtomicU64 = AtomicU64::new(1);
+// pub(crate) static TIMEBASE_FREQ: AtomicU64 = AtomicU64::new(1);
+pub(crate) const TIMEBASE_FREQ: u64 = 10000000;
 
 /// [`IoMem`] of goldfish RTC, which will be used by `aster-time`.
 pub static GOLDFISH_IO_MEM: Once<IoMem> = Once::new();
@@ -31,7 +33,8 @@ pub(super) fn init() {
         .next()
         .expect("No CPU node found in DTB for timebase frequency")
         .timebase_frequency() as u64;
-    TIMEBASE_FREQ.store(timer_freq, Ordering::Relaxed);
+    // TIMEBASE_FREQ.store(timer_freq, Ordering::Relaxed);
+    // crate::prelude::println!("timer_freq: {}", timer_freq);
 
     let fdt = DEVICE_TREE
         .get()
@@ -71,12 +74,15 @@ pub(super) fn init() {
 pub(crate) fn set_next_timer() {
     sbi_rt::set_timer(
         riscv::register::time::read64()
-            .wrapping_add(TIMEBASE_FREQ.load(Ordering::Relaxed) / TIMER_FREQ),
+            // .wrapping_add(TIMEBASE_FREQ.load(Ordering::Relaxed) / TIMER_FREQ),
+            .wrapping_add(TIMEBASE_FREQ / TIMER_FREQ),
     );
 }
 
 pub(crate) fn time_interrupt_handler() {
     crate::timer::jiffies::ELAPSED.fetch_add(1, Ordering::SeqCst);
+
+    // crate::prelude::print!("1");
 
     let irq_guard = disable_local();
     let callbacks_guard = INTERRUPT_CALLBACKS.get_with(&irq_guard);

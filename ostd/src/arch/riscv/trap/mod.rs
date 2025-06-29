@@ -66,6 +66,7 @@ pub fn is_kernel_interrupted() -> bool {
 /// Handle traps (only from kernel).
 #[no_mangle]
 extern "C" fn trap_handler(f: &mut TrapFrame) {
+    // crate::prelude::println!("trap_handler: {:#x?}", f);
     match riscv::interrupt::cause::<Interrupt, Exception>() {
         Trap::Interrupt(interrupt) => {
             IS_KERNEL_INTERRUPTED.store(true);

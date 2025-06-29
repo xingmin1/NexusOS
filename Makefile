@@ -21,7 +21,7 @@ OSTD_TASK_STACK_SIZE_IN_PAGES ?= 64
 # End of global build options.
 
 # GDB debugging and profiling options.
-GDB_TCP_PORT ?= 1234
+GDB_TCP_PORT ?= 12345
 GDB_PROFILE_FORMAT ?= flame-graph
 GDB_PROFILE_COUNT ?= 200
 GDB_PROFILE_INTERVAL ?= 0.1
@@ -212,11 +212,11 @@ else ifeq ($(AUTO_TEST), vsock)
 endif
 
 .PHONY: gdb_server
-gdb_server: initramfs $(CARGO_OSDK)
+gdb_server: $(CARGO_OSDK)
 	@cd kernel && cargo osdk run $(CARGO_OSDK_ARGS) --gdb-server wait-client,vscode,addr=:$(GDB_TCP_PORT)
 
 .PHONY: gdb_client
-gdb_client: initramfs $(CARGO_OSDK)
+gdb_client: $(CARGO_OSDK)
 	@cd kernel && cargo osdk debug $(CARGO_OSDK_ARGS) --remote :$(GDB_TCP_PORT)
 
 .PHONY: profile_server

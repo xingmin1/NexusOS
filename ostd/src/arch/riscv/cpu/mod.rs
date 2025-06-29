@@ -137,6 +137,7 @@ impl UserContextApiInternal for UserContext {
             log::info!("run end");
             match riscv::interrupt::cause::<Interrupt, Exception>() {
                 Trap::Interrupt(interrupt) => {
+                    // crate::prelude::println!("0");
                     handle_interrupt(interrupt, &mut self.as_trap_frame());
                 }
                 Trap::Exception(Exception::UserEnvCall) => {
@@ -273,6 +274,7 @@ pub type CpuException = Exception;
 #[inline(always)]
 pub fn wait_for_interrupt() {
     unsafe {
+        // crate::prelude::println!("wait for interrupt");
         riscv::register::sstatus::set_sie(); // 启用 Supervisor 中断
         riscv::asm::wfi(); // 等待中断指令
     }

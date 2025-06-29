@@ -134,6 +134,11 @@ impl UserContext {
     /// println!("back from user: {:#x?}", context);
     /// ```
     pub fn run(&mut self) {
+        // assert_eq!(self.sstatus & (1 << 5), 1 << 5);
+        // assert_eq!(self.sstatus & (1 << 18), 1 << 18);
+        // assert_eq!(self.sstatus & (1 << 13), 1 << 13);
+        // assert_eq!(self.sstatus & (1 << 8), 0);
+        // crate::prelude::println!("run user: {:#x?}", self);
         unsafe { run_user(self) }
     }
 }

@@ -91,7 +91,8 @@ pub(crate) fn interrupts_ack(_irq_number: usize) {
 
 /// 返回时间戳计数器(TSC)的频率，单位是Hz
 pub fn tsc_freq() -> u64 {
-    timer::TIMEBASE_FREQ.load(Ordering::Relaxed)
+    // timer::TIMEBASE_FREQ.load(Ordering::Relaxed)
+    timer::TIMEBASE_FREQ
 }
 
 /// 读取处理器时间戳计数器(TSC)的当前值

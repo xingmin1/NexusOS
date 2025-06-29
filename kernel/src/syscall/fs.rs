@@ -1,22 +1,22 @@
 #![allow(non_upper_case_globals)]
 
 use core::ops::ControlFlow;
-use alloc::{string::String, vec};
+use alloc::{collections::VecDeque, string::String, sync::Arc, vec};
 use nexus_error::{
     errno_with_message, error_stack::ResultExt, ostd_error_to_errno, ostd_tuple_to_errno, return_errno_with_message, Errno, Error, Result
 };
 use ostd::{
-    cpu::UserContext, mm::{FallibleVmRead, VmReader, VmWriter}, user::UserContextApi, Pod
+    cpu::UserContext, mm::{FallibleVmRead, VmReader, VmWriter, PAGE_SIZE}, sync::Mutex, user::UserContextApi, Pod
 };
-use vfs::{
-    self, get_path_resolver, FileMode, FileOpen, PathBuf, PathSlice, SVnode, VnodeType
-};
+use tracing::trace;
+use vfs::{self, get_path_resolver, impls::pipe::{PipeReader, PipeWriter}, FileMode, FileOpen, PathBuf, PathSlice, SFileHandle, SVnode, VnodeType};
+use vfs::impls::pipe::RingPipe;
 use crate::{
     thread::{
         fd_table::{FdEntry, FdObject},
         ThreadState,
     },
-    vm::ProcessVm,
+    vm::{perms::VmPerms, ProcessVm},
 };
 
 pub const AT_FDCWD: i32 = -100; // 相对当前工作目录
@@ -110,6 +110,7 @@ pub async fn do_read(
     };
     // 从用户空间拿出可写缓冲区（简单读取到临时内核 vec，然后再写回）
     let mut kbuf = vec![0u8; len];
+    trace!("read from fd {:?}: {:?}", fd, kbuf);
     let n = file.read_at(0, &mut kbuf).await?;
     state
         .process_vm
@@ -136,7 +137,8 @@ pub async fn do_write(
         .map_err(ostd_error_to_errno)?
         .read_fallible(&mut VmWriter::from(kbuf.as_mut_slice()))
         .map_err(ostd_tuple_to_errno)?;
-        // .read_bytes(buf_ptr, &mut VmWriter::from(kbuf.as_mut_slice()))?;
+    
+    trace!("write to fd {:?}: {:?}", fd, kbuf);
     let n = file.write_at(0, &kbuf).await?;
     Ok(ControlFlow::Continue(Some(n as isize)))
 }
@@ -369,5 +371,124 @@ pub async fn do_fstat(state: &ThreadState, cx: &mut UserContext) -> Result<Contr
     state
         .process_vm
         .write_bytes(kstat_ptr, &mut VmReader::from(ks.as_bytes()))?;
+    Ok(ControlFlow::Continue(Some(0)))
+}
+
+/// 获取当前工作目录路径
+pub async fn do_getcwd(
+    state: &ThreadState,
+    cx: &mut UserContext,
+) -> Result<ControlFlow<i32, Option<isize>>> {
+    let [buf_ptr, len, ..] = cx.syscall_arguments();
+    let cwd = state.cwd.clone().to_string();
+    let needed = cwd.len() + 1; // 包含NUL终止符
+
+    // 如果调用者提供了缓冲区，直接拷贝
+    if buf_ptr != 0 {
+        if len < needed {
+            return_errno_with_message!(Errno::ERANGE, "缓冲区太小");
+        }
+        state.process_vm.write_bytes(
+            buf_ptr,
+            &mut VmReader::from(cwd.as_bytes()),
+        )?;
+        state.process_vm.write_val(buf_ptr + cwd.len(), &0u8)?;
+        return Ok(ControlFlow::Continue(Some(buf_ptr as isize)));
+    }
+
+    // POSIX规定：如果buf为NULL，内核必须分配空间
+    // 我们在调用者的VMAR中创建一个刚好足够大的匿名映射
+    let map_size = needed.next_multiple_of(PAGE_SIZE);
+    let addr = state
+        .process_vm
+        .root_vmar()
+        .new_map(map_size, VmPerms::READ | VmPerms::WRITE)?
+        .build()
+        .await?;
+    state.process_vm.write_bytes(
+        addr,
+        &mut VmReader::from(cwd.as_bytes()),
+    )?;
+    state.process_vm.write_val(addr + cwd.len(), &0u8)?;
+    Ok(ControlFlow::Continue(Some(addr as isize)))
+}
+
+/// 创建管道对
+fn create_pipe_pair() -> (SFileHandle, SFileHandle) {
+    let shared = RingPipe::new();
+    let rd: Arc<PipeReader> = Arc::new(PipeReader(shared.clone()));
+    let wr: Arc<PipeWriter> = Arc::new(PipeWriter(shared));
+    (rd.into(), wr.into())
+}
+
+/// 创建管道
+pub async fn do_pipe2(
+    state: &ThreadState,
+    cx: &mut UserContext,
+) -> Result<ControlFlow<i32, Option<isize>>> {
+    let [fd_ptr, _flags, ..] = cx.syscall_arguments(); // 目前忽略flags
+    let (rd, wr) = create_pipe_pair();
+
+    let fd0 = state
+        .fd_table
+        .alloc(FdEntry::new_file(rd, FileOpen::options().read_only().build().unwrap()), 0)
+        .await?;
+    let fd1 = state
+        .fd_table
+        .alloc(FdEntry::new_file(wr, FileOpen::options().write_only().build().unwrap()), fd0 + 1)
+        .await?;
+
+    state.process_vm.write_val(fd_ptr, &fd0)?;
+    state.process_vm.write_val(fd_ptr + core::mem::size_of::<u32>(), &fd1)?;
+
+    Ok(ControlFlow::Continue(Some(0)))
+}
+
+/// 复制文件描述符
+pub async fn do_dup(
+    state: &ThreadState,
+    cx: &mut UserContext,
+) -> Result<ControlFlow<i32, Option<isize>>> {
+    let [oldfd, ..] = cx.syscall_arguments();
+    let newfd = state.fd_table.dup(oldfd as u32, 0, false).await?;
+    Ok(ControlFlow::Continue(Some(newfd as isize)))
+}
+
+/// 复制文件描述符并指定新fd
+pub async fn do_dup3(
+    state: &ThreadState,
+    cx: &mut UserContext,
+) -> Result<ControlFlow<i32, Option<isize>>> {
+    let [oldfd, newfd, flags, ..] = cx.syscall_arguments();
+    if oldfd == newfd {
+        return_errno_with_message!(Errno::EINVAL, "oldfd == newfd");
+    }
+    let cloexec = flags & 0x80000 != 0; // O_CLOEXEC标志
+    let newfd = state
+        .fd_table
+        .dup(oldfd as u32, newfd as u32, cloexec)
+        .await?;
+    Ok(ControlFlow::Continue(Some(newfd as isize)))
+}
+
+/// 改变当前工作目录
+pub async fn do_chdir(
+    state: &mut ThreadState,
+    cx: &mut UserContext,
+) -> Result<ControlFlow<i32, Option<isize>>> {
+    let [path_ptr, ..] = cx.syscall_arguments();
+    let raw = copy_cstr_from_user(&state.process_vm, path_ptr)?;
+    let new_path = if raw.starts_with('/') {
+        PathBuf::new(&raw)?
+    } else {
+        state.cwd.as_slice().join(&raw)?
+    };
+
+    // 确保目标存在且是目录
+    let vnode = vfs::get_path_resolver().resolve(&mut new_path.clone()).await?;
+    if !vnode.is_dir() {
+        return_errno_with_message!(Errno::ENOTDIR, "目标不是目录");
+    }
+    state.cwd = new_path;      
     Ok(ControlFlow::Continue(Some(0)))
 }

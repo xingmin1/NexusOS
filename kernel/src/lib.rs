@@ -27,7 +27,7 @@ use nexus_error::{return_errno, return_errno_with_message};
 
 static TYPE_MAP: [&str; 2] = ["glibc", "musl"];
 // static TASKS: [&str; 16] = ["clone", "execve", "exit", "fork", "getpid", "getppid", "wait", "waitpid", "fstat", "close", "getdents", "mkdir", "open", "read", "openat", "umount", "brk"];
-static TASKS: [&str; 1] = ["brk"];
+static TASKS: [&str; 2] = ["mmap", "munmap"];
 
 /// The kernel's boot and initialization process is managed by OSTD.
 /// After the process is done, the kernel's execution environment

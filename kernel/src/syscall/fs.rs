@@ -1,15 +1,15 @@
 #![allow(non_upper_case_globals)]
 
 use core::ops::ControlFlow;
-use alloc::{collections::VecDeque, string::String, sync::Arc, vec};
+use alloc::{string::String, sync::Arc, vec};
 use nexus_error::{
     errno_with_message, error_stack::ResultExt, ostd_error_to_errno, ostd_tuple_to_errno, return_errno_with_message, Errno, Error, Result
 };
 use ostd::{
-    cpu::UserContext, mm::{FallibleVmRead, VmReader, VmWriter, PAGE_SIZE}, sync::Mutex, user::UserContextApi, Pod
+    cpu::UserContext, mm::{FallibleVmRead, VmReader, VmWriter, PAGE_SIZE}, user::UserContextApi, Pod
 };
 use tracing::trace;
-use vfs::{self, get_path_resolver, impls::pipe::{PipeReader, PipeWriter}, FileMode, FileOpen, PathBuf, PathSlice, SFileHandle, SVnode, VnodeType};
+use vfs::{self, get_path_resolver, impls::pipe::{PipeReader, PipeWriter}, FileMode, FileOpen, PathBuf, PathSlice, SFileHandle, VnodeType};
 use vfs::impls::pipe::RingPipe;
 use crate::{
     thread::{
@@ -323,19 +323,20 @@ pub async fn do_fstat(state: &ThreadState, cx: &mut UserContext) -> Result<Contr
     let entry = state.fd_table.get(fd as u32).await?;
     let vnode = entry.obj.vnode();
     let meta = vnode.metadata().await?;
+    // ostd::prelude::println!("meta: {:?}", meta);
     // 填充 linux `struct kstat`
-    #[derive(Pod, Copy, Clone)]
+    #[derive(Pod, Copy, Clone, Debug)]
     #[repr(C)]
     struct KStat {
         st_dev: u64,
         st_ino: u64,
         st_mode: u32,
-        __pad1: u32,
+        // __pad1: u32,
         st_nlink: u64,
         st_uid: u32,
         st_gid: u32,
         st_rdev: u64,
-        __pad2: u64,
+        // __pad2: u64,
         st_size: i64,
         st_blksize: i32,
         __pad3: i32,
@@ -347,12 +348,12 @@ pub async fn do_fstat(state: &ThreadState, cx: &mut UserContext) -> Result<Contr
         st_dev: meta.fs_id as _,
         st_ino: meta.vnode_id,
         st_mode: meta.permissions.bits() as _,
-        __pad1: 0,
+        // __pad1: 0,
         st_nlink: meta.nlinks,
         st_uid: meta.uid,
         st_gid: meta.gid,
         st_rdev: meta.rdev.unwrap_or(0),
-        __pad2: 0,
+        // __pad2: 0,
         st_size: meta.size as _,
         st_blksize: 4096,
         __pad3: 0,
@@ -367,6 +368,7 @@ pub async fn do_fstat(state: &ThreadState, cx: &mut UserContext) -> Result<Contr
         ],
         __unused: [0; 2],
     };
+    // ostd::prelude::println!("ks: {:?}", ks);
     // 写回用户态
     state
         .process_vm

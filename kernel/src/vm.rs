@@ -19,7 +19,7 @@
 use alloc::{ffi::CString, vec::Vec};
 
 use aster_rights::Full;
-use nexus_error::{errno_with_message, error_stack::ResultExt, ostd_error_to_errno, ostd_tuple_to_errno, return_errno_with_message, Errno};
+use nexus_error::{ostd_error_to_errno, ostd_tuple_to_errno, return_errno_with_message, Errno};
 use ostd::{mm::{Fallible, FallibleVmRead, FallibleVmWrite, Infallible, Vaddr, VmReader, VmWriter}, Pod};
 use vmar::Vmar;
 
@@ -36,6 +36,8 @@ pub mod vmar;
 pub mod vmo;
 pub mod heap;
 pub mod brk;
+pub mod mmap;
+pub mod munmap;
 
 // The process user space virtual memory
 pub struct ProcessVm {

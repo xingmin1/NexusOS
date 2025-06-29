@@ -521,7 +521,7 @@ impl From<alloc::ffi::NulError> for Error {
 #[macro_export]
 macro_rules! return_errno {
     ($errno: expr) => {
-        return Err($crate::Error::new($errno))
+        return Err($crate::error_stack::Report::new($crate::Error::new($errno)))
     };
 }
 

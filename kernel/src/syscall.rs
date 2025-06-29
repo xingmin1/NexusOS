@@ -12,6 +12,8 @@ use crate::syscall::fs::{do_chdir, do_close, do_dup, do_dup3, do_fstat, do_getcw
 use crate::thread::{clone::do_clone, execve::do_execve, get_pid::do_getpid, get_ppid::do_getppid, sched_yield::do_sched_yield, wait::do_wait4, ThreadState};
 use crate::thread::exit::do_exit;
 use crate::vm::brk::do_brk;
+use crate::vm::mmap::do_mmap;
+use crate::vm::munmap::do_munmap;
 
 #[allow(non_upper_case_globals)]
 
@@ -49,6 +51,8 @@ pub async fn syscall(state: &mut ThreadState, context: &mut UserContext) -> Resu
         SYS_dup3 => do_dup3(state, context).await,
         SYS_chdir => do_chdir(state, context).await,
         SYS_brk => do_brk(state, context).await,
+        SYS_mmap => do_mmap(state, context).await,
+        SYS_munmap => do_munmap(state, context).await,
         num => {
             warn!("syscall not implemented: number={}, name={}, args={:?}", num, sys_call_name(num).unwrap_or("unknown"), context.syscall_arguments());
             Err(errno_with_message(nexus_error::Errno::ENOSYS, "syscall not implemented")).attach_printable_lazy(|| {

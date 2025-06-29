@@ -18,13 +18,14 @@ extern crate alloc;
 
 use alloc::format;
 use ostd::{
-    arch::qemu::{exit_qemu, QemuExitCode}, cpu::{CpuSet, PinCurrentCpu}, smp::inter_processor_call, task::{disable_preempt, scheduler::spawn}
+    arch::qemu::{exit_qemu, QemuExitCode}, cpu::{CpuSet, PinCurrentCpu}, early_println, smp::inter_processor_call, task::{disable_preempt, scheduler::spawn}
 };
 use thread::ThreadBuilder;
 use tracing::{debug, info, trace_span, warn};
 #[allow(unused_imports)]
 use nexus_error::{return_errno, return_errno_with_message};
 
+static TYPE_MAP: [&str; 2] = ["glibc", "musl"];
 static TASKS: [&str; 16] = ["clone", "execve", "exit", "fork", "getpid", "getppid", "wait", "waitpid", "fstat", "close", "getdents", "mkdir", "open", "read", "openat", "umount"];
 // static TASKS: [&str; 1] = ["fstat"];
 
@@ -41,12 +42,16 @@ pub fn main() {
 
     spawn(async {
         vfs::init_vfs().await;
-        // let thread_span = trace_span!("thread_spawn").entered();
-        for task in TASKS {
-            let (_, handle) = ThreadBuilder::new().path(&format!("/musl/basic/{}", task)).spawn().await.unwrap();
-            handle.await.inspect_err(|e| {
-                warn!("ThreadBuilder::spawn 失败: {:?}", e);
-            });
+        for type_ in TYPE_MAP {
+            early_println!("#### OS COMP TEST GROUP START basic-{} ####", type_);
+            for task in TASKS {
+                early_println!("Testing {} :", task);
+                let (_, handle) = ThreadBuilder::new().path(&format!("/{}/basic/{}", type_, task)).spawn().await.unwrap();
+                handle.await.inspect_err(|e| {
+                    warn!("ThreadBuilder::spawn 失败: {:?}", e);
+                });
+            }
+            early_println!("#### OS COMP TEST GROUP END basic-{} ####", type_);
         }
         ostd::task::scheduler::stop_running();
     }, None);

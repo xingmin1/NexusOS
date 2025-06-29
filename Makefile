@@ -194,7 +194,7 @@ tools:
 	@cd kernel/libs/comp-sys && cargo install --path cargo-component
 
 .PHONY: run
-run: initramfs $(CARGO_OSDK)
+run: $(CARGO_OSDK)
 	@cd kernel && cargo osdk run $(CARGO_OSDK_ARGS)
 # Check the running status of auto tests from the QEMU log
 ifeq ($(AUTO_TEST), syscall)

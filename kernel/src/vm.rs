@@ -26,6 +26,7 @@ use vmar::Vmar;
 use crate::{
     error::Result,
     thread::init_stack::{AuxVec, InitStack},
+    vm::heap::Heap,
 };
 
 pub mod page_fault_handler;
@@ -33,24 +34,26 @@ pub mod perms;
 pub mod util;
 pub mod vmar;
 pub mod vmo;
+pub mod heap;
+pub mod brk;
 
 // The process user space virtual memory
 pub struct ProcessVm {
     root_vmar: Vmar<Full>,
-    init_stack: InitStack,
-    // heap: Heap,
+    heap: Heap,
+    init_stack: InitStack,  
 }
 
 impl ProcessVm {
     /// Allocates a new `ProcessVm`
-    pub fn alloc() -> Self {
+    pub async fn alloc() -> Self {
         let root_vmar = Vmar::<Full>::new_root();
         let init_stack = InitStack::new();
-        // let heap = Heap::new();
-        // heap.alloc_and_map_vm(&root_vmar).unwrap();
+        let heap = Heap::new();
+        heap.alloc_and_map_vm(&root_vmar).await.unwrap();
         Self {
             root_vmar,
-            // heap,
+            heap,
             init_stack,
         }
     }
@@ -62,7 +65,7 @@ impl ProcessVm {
         let root_vmar = Vmar::<Full>::fork_from(&other.root_vmar).await?;
         Ok(Self {
             root_vmar,
-            // heap: other.heap.clone(),
+            heap: other.heap.clone(),
             init_stack: other.init_stack.clone(),
         })
     }
@@ -88,7 +91,9 @@ impl ProcessVm {
     }
 
     pub async fn clear_root_vmar(&self) -> Result<()> {
-        self.root_vmar.clear().await
+        self.root_vmar.clear().await?;
+        self.heap.alloc_and_map_vm(&self.root_vmar).await?;
+        Ok(())
     }
 }
 

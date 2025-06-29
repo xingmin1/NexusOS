@@ -117,7 +117,7 @@ impl<'a> ThreadBuilder<'a> {
     }
 
     pub async fn spawn(&mut self) -> Result<(Arc<ThreadSharedInfo>, JoinHandle<()>)> {
-        let process_vm = Arc::new(ProcessVm::alloc());
+        let process_vm = Arc::new(ProcessVm::alloc().await);
         let path = self.path.take().unwrap();
         let cwd = PathBuf::new(path)?.as_slice().strip_suffix().unwrap_or(PathSlice::from("/")).to_owned_buf();
         let user_task_options = create_user_task(

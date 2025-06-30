@@ -12,11 +12,17 @@
 [package]
 edition = "2021"
 name = "mutex-traits"
-version = "1.0.0"
+version = "1.0.1"
 authors = [
     "James Munns <james@onevariable.com>",
     "Eliza Weisman <eliza@elizas.website>",
 ]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "An abstraction over closure-based mutexes"
 documentation = "https://docs.rs/mutex-traits/"
 readme = "README.md"
@@ -36,3 +42,7 @@ rustdoc-args = [
 
 [features]
 std = []
+
+[lib]
+name = "mutex_traits"
+path = "src/lib.rs"

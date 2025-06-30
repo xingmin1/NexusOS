@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "delegate"
-version = "0.13.3"
+version = "0.13.4"
 authors = [
     "Godfrey Chan <godfreykfc@gmail.com>",
     "Jakub Beránek <berykubik@gmail.com>",

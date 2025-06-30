@@ -32,6 +32,6 @@ aster-nix-profile-*.folded
 aster-nix-profile-*.svg
 .aider*
 .cursorignore
-sdcard-rv.img*
+sdcard-*
 .idea/
-kernel-rv
+kernel-*

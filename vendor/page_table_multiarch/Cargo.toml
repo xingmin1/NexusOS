@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "page_table_multiarch"
-version = "0.5.4"
+version = "0.5.5"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
 autolib = false
@@ -55,6 +55,10 @@ default = []
 name = "page_table_multiarch"
 path = "src/lib.rs"
 
+[[test]]
+name = "alloc_tests"
+path = "tests/alloc_tests.rs"
+
 [dependencies.bitmaps]
 version = "3.2"
 optional = true
@@ -68,6 +72,11 @@ version = "0.4"
 
 [dependencies.page_table_entry]
 version = "0.5"
+
+[dev-dependencies.rand]
+version = "0.9.1"
+features = ["small_rng"]
+default-features = false
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64", doc))'.dependencies.riscv]
 version = "0.14"

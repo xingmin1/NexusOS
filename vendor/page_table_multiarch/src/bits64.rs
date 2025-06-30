@@ -200,10 +200,7 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
                 PageSize::Size4K
             };
             let tlb = self.map(vaddr, paddr, page_size, flags).inspect_err(|e| {
-                error!(
-                    "failed to map page: {:#x?}({:?}) -> {:#x?}, {:?}",
-                    vaddr_usize, page_size, paddr, e
-                )
+                error!("failed to map page: {vaddr_usize:#x?}({page_size:?}) -> {paddr:#x?}, {e:?}")
             })?;
             if flush_tlb_by_page {
                 M::flush_tlb(Some(vaddr));
@@ -245,7 +242,7 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
             let vaddr = vaddr_usize.into();
             let (_, page_size, tlb) = self
                 .unmap(vaddr)
-                .inspect_err(|e| error!("failed to unmap page: {:#x?}, {:?}", vaddr_usize, e))?;
+                .inspect_err(|e| error!("failed to unmap page: {vaddr_usize:#x?}, {e:?}"))?;
             if flush_tlb_by_page {
                 tlb.flush();
             } else {
@@ -287,7 +284,7 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
             let vaddr = vaddr_usize.into();
             let (page_size, tlb) = self
                 .protect(vaddr, flags)
-                .inspect_err(|e| error!("failed to protect page: {:#x?}, {:?}", vaddr_usize, e))?;
+                .inspect_err(|e| error!("failed to protect page: {vaddr_usize:#x?}, {e:?}"))?;
             if flush_tlb_by_page {
                 tlb.flush();
             } else {
@@ -349,8 +346,8 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
         assert!(end_idx <= ENTRY_COUNT);
         for i in start_idx..end_idx {
             let entry = &mut dst_table[i];
-            if !self.borrowed_entries.set(i, true) {
-                self.dealloc_tree(entry, 1);
+            if !self.borrowed_entries.set(i, true) && self.next_table(entry).is_ok() {
+                self.dealloc_tree(entry.paddr(), 1);
             }
             *entry = src_table[i];
         }
@@ -532,16 +529,16 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
         Ok(())
     }
 
-    fn dealloc_tree(&self, table_entry: &PTE, level: usize) {
+    fn dealloc_tree(&self, table_paddr: PhysAddr, level: usize) {
         // don't free the entries in last level, they are not array.
         if level < M::LEVELS - 1 {
-            if let Ok(table) = self.next_table(table_entry) {
-                for entry in table {
-                    self.dealloc_tree(entry, level + 1);
+            for entry in self.table_of(table_paddr) {
+                if self.next_table(entry).is_ok() {
+                    self.dealloc_tree(entry.paddr(), level + 1);
                 }
-                H::dealloc_frame(table_entry.paddr());
             }
         }
+        H::dealloc_frame(table_paddr);
     }
 }
 
@@ -554,7 +551,9 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> Drop for PageTable64<
             if self.borrowed_entries.get(i) {
                 continue;
             }
-            self.dealloc_tree(entry, 1);
+            if self.next_table(entry).is_ok() {
+                self.dealloc_tree(entry.paddr(), 1);
+            }
         }
         H::dealloc_frame(self.root_paddr());
     }

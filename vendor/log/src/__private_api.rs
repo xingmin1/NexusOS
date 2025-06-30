@@ -1,10 +1,9 @@
 //! WARNING: this is not part of the crate's public API and is subject to change at any time
 
 use self::sealed::KVs;
-use crate::{logger, Level, Log, Metadata, Record};
+use crate::{Level, Metadata, Record};
 use std::fmt::Arguments;
-use std::panic::Location;
-pub use std::{format_args, module_path, stringify};
+pub use std::{file, format_args, line, module_path, stringify};
 
 #[cfg(not(feature = "kv"))]
 pub type Value<'a> = &'a str;
@@ -34,30 +33,11 @@ impl<'a> KVs<'a> for () {
 
 // Log implementation.
 
-/// The global logger proxy.
-#[derive(Debug)]
-pub struct GlobalLogger;
-
-impl Log for GlobalLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        logger().enabled(metadata)
-    }
-
-    fn log(&self, record: &Record) {
-        logger().log(record)
-    }
-
-    fn flush(&self) {
-        logger().flush()
-    }
-}
-
-// Split from `log` to reduce generics and code size
-fn log_impl<L: Log>(
-    logger: L,
+fn log_impl(
     args: Arguments,
     level: Level,
-    &(target, module_path, loc): &(&str, &'static str, &'static Location),
+    &(target, module_path, file): &(&str, &'static str, &'static str),
+    line: u32,
     kvs: Option<&[(&str, Value)]>,
 ) {
     #[cfg(not(feature = "kv"))]
@@ -72,41 +52,35 @@ fn log_impl<L: Log>(
         .level(level)
         .target(target)
         .module_path_static(Some(module_path))
-        .file_static(Some(loc.file()))
-        .line(Some(loc.line()));
+        .file_static(Some(file))
+        .line(Some(line));
 
     #[cfg(feature = "kv")]
     builder.key_values(&kvs);
 
-    logger.log(&builder.build());
+    crate::logger().log(&builder.build());
 }
 
-pub fn log<'a, K, L>(
-    logger: L,
+pub fn log<'a, K>(
     args: Arguments,
     level: Level,
-    target_module_path_and_loc: &(&str, &'static str, &'static Location),
+    target_module_path_and_file: &(&str, &'static str, &'static str),
+    line: u32,
     kvs: K,
 ) where
     K: KVs<'a>,
-    L: Log,
 {
     log_impl(
-        logger,
         args,
         level,
-        target_module_path_and_loc,
+        target_module_path_and_file,
+        line,
         kvs.into_kvs(),
     )
 }
 
-pub fn enabled<L: Log>(logger: L, level: Level, target: &str) -> bool {
-    logger.enabled(&Metadata::builder().level(level).target(target).build())
-}
-
-#[track_caller]
-pub fn loc() -> &'static Location<'static> {
-    Location::caller()
+pub fn enabled(level: Level, target: &str) -> bool {
+    crate::logger().enabled(&Metadata::builder().level(level).target(target).build())
 }
 
 #[cfg(feature = "kv")]

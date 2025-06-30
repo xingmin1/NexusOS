@@ -4,6 +4,7 @@
 
 mod trap;
 
+use loongArch64::register::estat::Interrupt;
 pub use trap::{GeneralRegs, TrapFrame, UserContext};
 
 use crate::cpu_local_cell;
@@ -27,13 +28,18 @@ pub fn is_kernel_interrupted() -> bool {
 /// Handle traps (only from kernel).
 #[no_mangle]
 extern "C" fn trap_handler(f: &mut TrapFrame) {
-    use loongArch64::register::estat::Trap;
+    use loongArch64::register::estat::{self, Trap};
 
-    match loongArch64::register::estat::read().cause() {
+    match estat::read().cause() {
         Trap::Interrupt(_) => {
             IS_KERNEL_INTERRUPTED.store(true);
-            todo!();
-            #[expect(unreachable_code)]
+            let estat = estat::read();
+            match estat.cause() {
+                Trap::Interrupt(Interrupt::Timer) => {
+                    crate::arch::timer::time_interrupt_handler();
+                }
+                _ => todo!(),
+            }
             IS_KERNEL_INTERRUPTED.store(false);
         }
         Trap::Exception(e) => {

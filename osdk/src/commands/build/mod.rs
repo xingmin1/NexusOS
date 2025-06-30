@@ -207,9 +207,6 @@ fn build_kernel_elf(
         &rustc_linker_script_arg,
         "-C relocation-model=static",
         "-C relro-level=off",
-        // We do not really allow unwinding except for kernel testing. However, we need to specify
-        // this to show backtraces when panicking.
-        "-C panic=unwind",
         // This is to let rustc know that "cfg(ktest)" is our well-known configuration.
         // See the [Rust Blog](https://blog.rust-lang.org/2024/05/06/check-cfg.html) for details.
         "--check-cfg cfg(ktest)",
@@ -225,6 +222,12 @@ fn build_kernel_elf(
         // It makes running on Intel CPUs after Ivy Bridge (2012) faster, but much slower
         // on older CPUs.
         rustflags.push("-C target-feature=+ermsb");
+    }
+
+    if matches!(arch, Arch::LoongArch64) {
+        rustflags.push("-C panic=abort");
+    } else {
+        rustflags.push("-C panic=unwind");
     }
 
     let mut command = cargo();
@@ -252,7 +255,7 @@ fn build_kernel_elf(
     if !status.success() {
         error_msg!("Cargo build failed");
         process::exit(Errno::ExecuteCommand as _);
-    }
+    } 
 
     let aster_bin_path = cargo_target_directory
         .as_ref()

@@ -33,7 +33,7 @@ pub struct CpuId(u32);
 impl CpuId {
     /// 返回引导处理器(BSP)的Hart ID。
     /// 如果在BSP ID确定之前调用会触发panic。
-    #[cfg(target_arch = "riscv64")]
+    #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
     pub fn bsp() -> Self {
         CpuId(crate::arch::boot::bsp_hart_id())
     }
@@ -135,4 +135,52 @@ unsafe impl PinCurrentCpu for DisabledPreemptGuard {}
 cpu_local_cell! {
     /// The number of the current CPU.
     static CURRENT_CPU: u32 = u32::MAX;
+}
+
+/// Generic CPU exception abstraction for RISC-V and LoongArch 
+#[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CpuException {
+    /// Instruction fetch page fault.
+    InstructionPageFault,
+    /// Load page fault.
+    LoadPageFault,
+    /// Store/AMO page fault.
+    StorePageFault,
+    /// Environment call from user mode (syscall).
+    UserEnvCall,
+    /// Software breakpoint.
+    Breakpoint,
+    /// Any other architecture-specific exception.
+    Other,
+}
+
+#[cfg(target_arch = "riscv64")]
+impl From<riscv::interrupt::Exception> for CpuException {
+    fn from(e: riscv::interrupt::Exception) -> Self {
+        use riscv::interrupt::Exception as E;
+        match e {
+            E::InstructionPageFault => CpuException::InstructionPageFault,
+            E::LoadPageFault => CpuException::LoadPageFault,
+            E::StorePageFault => CpuException::StorePageFault,
+            E::UserEnvCall => CpuException::UserEnvCall,
+            E::Breakpoint => CpuException::Breakpoint,
+            _ => CpuException::Other,
+        }
+    }
+}
+
+#[cfg(target_arch = "loongarch64")]
+impl From<loongArch64::register::estat::Exception> for CpuException {
+    fn from(e: loongArch64::register::estat::Exception) -> Self {
+        use loongArch64::register::estat::Exception as E;
+        match e {
+            E::FetchPageFault => CpuException::InstructionPageFault,
+            E::LoadPageFault => CpuException::LoadPageFault,
+            E::StorePageFault => CpuException::StorePageFault,
+            E::Syscall => CpuException::UserEnvCall,
+            E::Breakpoint => CpuException::Breakpoint,
+            _ => CpuException::Other,
+        }
+    }
 }

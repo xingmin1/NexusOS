@@ -2,7 +2,7 @@
 
 use spin::Once;
 
-use crate::{arch::irq::{is_local_enabled, IRQ_LIST}, cpu_local_cell, task::disable_preempt, trap::TrapFrame};
+use crate::{arch::irq::{is_local_enabled, IrqLine}, cpu_local_cell, task::disable_preempt, trap::TrapFrame};
 
 static BOTTOM_HALF_HANDLER: Once<fn()> = Once::new();
 
@@ -21,7 +21,7 @@ pub fn register_bottom_half_handler(func: fn()) {
 }
 
 fn process_top_half(trap_frame: &TrapFrame, irq_number: usize) {
-    let irq_line = IRQ_LIST.get().unwrap().get(irq_number).unwrap();
+    let irq_line = unsafe { IrqLine::acquire(irq_number as u16) };
     let callback_functions = irq_line.callback_list();
     for callback_function in callback_functions.iter() {
         callback_function.call(trap_frame);

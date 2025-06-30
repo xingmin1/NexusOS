@@ -29,6 +29,7 @@ pub use cursor::{Cursor, CursorMut, PageTableItem};
 mod test;
 
 pub(crate) mod boot_pt;
+pub(crate) mod debug;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PageTableError {

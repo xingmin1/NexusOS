@@ -2,24 +2,22 @@
 
 //! Panic support.
 
-use core::ffi::c_void;
-
+#[cfg(not(target_arch = "loongarch64"))]
 pub use unwinding::panic::{begin_panic, catch_unwind};
+#[cfg(not(target_arch = "loongarch64"))]
+use {
+    gimli::Register,
+    unwinding::abi::{
+        UnwindContext, UnwindReasonCode, _Unwind_Backtrace, _Unwind_FindEnclosingFunction,
+        _Unwind_GetGR, _Unwind_GetIP,
+    },
+};
 
 use crate::{
-    arch::qemu::{exit_qemu, QemuExitCode},
-    early_print, early_println,
-    sync::GuardSpinLock,
+    arch::qemu::{exit_qemu, QemuExitCode}, early_println,
 };
 
-extern crate cfg_if;
-extern crate gimli;
-
-use gimli::Register;
-use unwinding::abi::{
-    UnwindContext, UnwindReasonCode, _Unwind_Backtrace, _Unwind_FindEnclosingFunction,
-    _Unwind_GetGR, _Unwind_GetIP,
-};
+// extern crate cfg_if;
 
 /// The default panic handler for OSTD based kernels.
 ///
@@ -27,8 +25,16 @@ use unwinding::abi::{
 /// `#[ostd::panic_handler]`.
 #[linkage = "weak"]
 #[no_mangle]
+// #[cfg(not(target_arch = "loongarch64"))]
 pub fn __ostd_panic_handler(info: &core::panic::PanicInfo) -> ! {
     let _irq_guard = crate::trap::disable_local();
+
+    if let Some(location) = info.location() {
+        early_println!("Panicked at {}:{}",
+            location.file(),
+            location.line(),
+        );
+    }
 
     crate::cpu_local_cell! {
         static IN_PANIC: bool = false;
@@ -55,6 +61,7 @@ pub fn abort() -> ! {
 /// Prints the stack trace of the current thread to the console.
 ///
 /// The printing procedure is protected by a spin lock to prevent interleaving.
+#[cfg(not(target_arch = "loongarch64"))]
 pub fn print_stack_trace() {
     /// We acquire a global lock to prevent the frames in the stack trace from
     /// interleaving. The spin lock is used merely for its simplicity.
@@ -105,4 +112,52 @@ pub fn print_stack_trace() {
 
     let mut data = CallbackData { counter: 0 };
     _Unwind_Backtrace(callback, &mut data as *mut _ as _);
+}
+
+/// Prints the stack trace of the current thread for LoongArch architecture.
+///
+/// This performs manual stack frame traversal, as LoongArch does not support
+/// native unwinding. It assumes kernel text segment boundaries (stext/etext)
+/// are defined in the linker script for safety checks.
+#[cfg(target_arch = "loongarch64")]
+pub fn print_stack_trace() {
+    unsafe extern "C" {
+        fn __stext();
+        fn __etext();
+    }
+
+    early_println!("Printing stack trace (manual unwind for LoongArch):");
+
+    unsafe {
+        let mut current_pc: usize;
+        let mut current_fp: usize;
+
+        core::arch::asm!(
+            "move {}, $ra",
+            "move {}, $fp",
+            out(reg) current_pc,
+            out(reg) current_fp
+        );
+
+        const STACK_FRAME_OFFSET_FP: isize = -2; // LoongArch frame pointer offset (business constraint: per ABI).
+        const STACK_FRAME_OFFSET_PC: isize = -1; // LoongArch return address offset.
+
+        let mut frame_count = 0;
+        while current_pc >= __stext as usize && current_pc <= __etext as usize && current_fp != 0 {
+            frame_count += 1;
+            early_println!(
+                "{:4}: {:#x}",
+                frame_count,
+                current_pc - core::mem::size_of::<usize>()
+            );
+
+            let frame_ptr = current_fp as *const usize;
+            current_fp = *frame_ptr.offset(STACK_FRAME_OFFSET_FP);
+            current_pc = *frame_ptr.offset(STACK_FRAME_OFFSET_PC);
+        }
+
+        if frame_count == 0 {
+            early_println!("    (empty stack)");
+        }
+    }
 }

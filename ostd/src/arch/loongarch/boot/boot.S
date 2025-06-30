@@ -3,17 +3,19 @@
 .macro SET_CSR_BITS CSR_ID, bits_start, bits_end, value
     csrrd      $t0, \CSR_ID
 
+    # Create a mask to clear the target bit range
     li.d       $t2, (1 << (\bits_end - \bits_start + 1)) - 1
     slli.d     $t2, $t2, \bits_start
+    nor        $t2, $t2, $zero # Invert mask to get zeros for target bits
 
+    # Clear the bits in the original CSR value
     and        $t0, $t0, $t2
 
+    # Prepare the new value
     li.d       $t1, \value
     slli.d     $t1, $t1, \bits_start
 
-    # for safety consideration
-    and        $t0, $t0, $t2
-
+    # Set the new bits
     or         $t0, $t0, $t1
 
     csrwr      $t0, \CSR_ID
@@ -21,6 +23,9 @@
 
 .section .text.entry
 .globl _start
+.globl _start_ap
+
+_start_ap:
 _start:
     # Setup DMWIN
 
@@ -87,8 +92,8 @@ _start:
     st.d        $t0, $t1, 2040  # boot_pagetable_2nd[510] = phys(boot_pagetable_3nd)
 
     # Generate 3rd level page table
-    li.d        $t1, 0x80000000 | 0x4000000000001c3 # PVDWH | HUGE_MARKER
-    li.d        $t3, 0xc0000000 | 0x4000000000001c3
+    li.d        $t1, 0x80000000 | 0x0000000000001c3 # PVDWH | HUGE_MARKER
+    li.d        $t3, 0xc0000000 | 0x0000000000001c3
     li.d        $t4, 0x00200000 # increment by 2MB
 
 .loop_fill_3rd:
@@ -123,7 +128,7 @@ _start:
 
     # Read cpuid and fdt_base
     csrrd       $a0, 0x20       # cpuid
-    li.d        $a1, 0x100000   # FDT_BASE
+    move        $a1, $a2        # systemtable paddr
 
 .extern __cpu_local_start
     la.global   $r21, __cpu_local_start

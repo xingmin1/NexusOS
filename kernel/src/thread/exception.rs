@@ -42,7 +42,7 @@ impl TryFrom<&CpuExceptionInfo> for PageFaultInfo {
             }
         };
         Ok(PageFaultInfo {
-            address: value.stval,
+            address: value.page_fault_addr,
             required_perms: vm_perms,
         })
     }

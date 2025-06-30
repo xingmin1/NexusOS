@@ -16,8 +16,8 @@ use self::bus::MmioBus;
 use crate::{sync::GuardSpinLock, trap::IrqLine};
 use crate::drivers::virtio::block::VirtioBlkDriver;
 
-#[cfg(target_arch = "riscv64")]
-use crate::arch::riscv::boot::DEVICE_TREE;
+#[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
+use crate::arch::boot::DEVICE_TREE;
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))] {
@@ -53,12 +53,12 @@ pub(crate) fn init() {
     #[cfg(target_arch = "x86_64")]
     iter_range(0xFEB0_0000..0xFEB0_4000);
 
-    // [TODO]: 对 LoongArch 平台，需要解析 FDT 并绑定 GIC IRQ，再调用 iter_range 或等效扫描函数。
-
-    #[cfg(target_arch = "riscv64")]
-    tracing::info!("Initializing MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
-    iter_fdt_nodes();
-    tracing::info!("Initialized MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
+    #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
+    {
+        tracing::info!("Initializing MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
+        iter_fdt_nodes();
+        tracing::info!("Initialized MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
+    }
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -95,7 +95,7 @@ fn iter_range(range: Range<usize>) {
     }
 }
 
-#[cfg(target_arch = "riscv64")]
+#[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
 fn iter_fdt_nodes() {
     let Some(fdt) = DEVICE_TREE.get() else {
         log::warn!("[Virtio]: DEVICE_TREE not ready, skip MMIO scan");

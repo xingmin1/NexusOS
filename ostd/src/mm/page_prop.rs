@@ -115,6 +115,8 @@ bitflags! {
         const ACCESSED  = 0b00001000;
         /// Has the memory page been written.
         const DIRTY     = 0b00010000;
+        /// Copy-on-write marker.
+        const COW       = 0b00100000;
 
         /// The first bit available for software use.
         const AVAIL1    = 0b01000000;
@@ -127,7 +129,7 @@ bitflags! {
     /// Page property that are only accessible in OSTD.
     pub struct PrivilegedPageFlags: u8 {
         /// Accessible from kernel mode.
-        #[cfg(target_arch = "riscv64")]
+        #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
         const KERNEL    = 0b00000000;
         /// Accessible from user mode.
         const USER      = 0b00000001;

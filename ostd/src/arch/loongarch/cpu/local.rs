@@ -13,3 +13,13 @@ pub(crate) fn get_base() -> u64 {
     }
     addr
 }
+
+pub(crate) fn set_base(base: u64) {
+    unsafe {
+        core::arch::asm!(
+            "move $r21, {base}",
+            base = in(reg) base,
+            options(preserves_flags, nostack)
+        );
+    }
+}

@@ -18,6 +18,7 @@ use memory_region::{MemoryRegion, MemoryRegionArray};
 use spin::Once;
 
 /// The boot information provided by the bootloader.
+#[derive(Debug)]
 pub struct BootInfo {
     /// The name of the bootloader.
     pub bootloader_name: String,

@@ -19,7 +19,7 @@ pub fn register_console_input_callback(_f: &'static InputCallback) {
     todo!()
 }
 
-struct Stdout;
+pub(super) struct Stdout;
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {

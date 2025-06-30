@@ -5,6 +5,8 @@
 pub mod context;
 pub mod local;
 
+pub use context::*;
+
 /// Halts the CPU.
 ///
 /// This function halts the CPU until the next interrupt is received. By
@@ -14,7 +16,7 @@ pub mod local;
 /// Since the function sleeps the CPU, it should not be used within an atomic
 /// mode ([`crate::task::atomic_mode`]).
 #[track_caller]
-pub fn sleep_for_interrupt() {
+pub fn wait_for_interrupt() {
     crate::task::atomic_mode::might_sleep();
     unsafe { loongArch64::asm::idle() };
 }

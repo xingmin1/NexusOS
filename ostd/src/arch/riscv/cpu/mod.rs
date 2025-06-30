@@ -50,10 +50,10 @@ pub struct UserContext {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct CpuExceptionInfo {
-    /// The type of the exception.
-    pub code: Exception,
-    /// The value of stval.
-    pub stval: usize,
+    /// The generic CPU exception code.
+    pub code: crate::cpu::CpuException,
+    /// The virtual address associated with the exception (stval).
+    pub page_fault_addr: usize,
 }
 
 impl Default for UserContext {
@@ -70,15 +70,15 @@ impl Default for UserContext {
 impl Default for CpuExceptionInfo {
     fn default() -> Self {
         CpuExceptionInfo {
-            code: Exception::UserEnvCall,
-            stval: 0,
+            code: crate::cpu::CpuException::UserEnvCall,
+            page_fault_addr: 0,
         }
     }
 }
 
 impl CpuExceptionInfo {
     /// Get corresponding CPU exception
-    pub fn cpu_exception(&self) -> CpuException {
+    pub fn cpu_exception(&self) -> crate::cpu::CpuException {
         self.code
     }
 }
@@ -149,13 +149,13 @@ impl UserContextApiInternal for UserContext {
                 }
                 Trap::Exception(Exception::UserEnvCall) => {
                     self.user_context.sepc += 4;
-                    self.cpu_exception_info = CpuExceptionInfo { code: Exception::UserEnvCall, stval: 0 };
+                    self.cpu_exception_info = CpuExceptionInfo { code: crate::cpu::CpuException::UserEnvCall, page_fault_addr: 0 };
                     break ReturnReason::UserException;
                 }
                 Trap::Exception(e) => {
                     let stval = riscv::register::stval::read();
                     log::trace!("Exception, scause: {e:?}, stval: {stval:#x?}");
-                    self.cpu_exception_info = CpuExceptionInfo { code: e, stval };
+                    self.cpu_exception_info = CpuExceptionInfo { code: e.into(), page_fault_addr: stval };
                     break ReturnReason::UserException;
                 }
             }
@@ -268,9 +268,6 @@ cpu_context_impl_getter_setter!(
     [t5, set_t5],
     [t6, set_t6]
 );
-
-/// CPU exception.
-pub type CpuException = Exception;
 
 /// 在自旋循环中等待中断发生。
 ///

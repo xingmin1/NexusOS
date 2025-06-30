@@ -88,9 +88,10 @@ fn get_log_level() -> Option<LevelFilter> {
     // the logger assumes that it follows the Linux kernel command line format.
     // We search for the `ostd.log_level=ARGUMENT` pattern in string.
     let value = kcmdline
-        .split(' ')
-        .find(|arg| arg.starts_with("ostd.log_level="))
-        .map(|arg| arg.split('=').next_back().unwrap_or_default())?;
+        .split_whitespace()
+        .find_map(|arg| arg.strip_prefix("ostd.log_level="))
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| option_env!("LOG_LEVEL").unwrap_or("off"));
 
     LevelFilter::from_str(value).ok()
 }

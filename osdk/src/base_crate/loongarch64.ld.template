@@ -13,6 +13,7 @@ SECTIONS
     __kernel_start = .;
 
     .text : AT(ADDR(.text) - KERNEL_VMA_OFFSET) {
+        PROVIDE(__stext = .);
         /* We must *KEEP* the entry explicitly to avoid the linker from
          * discarding it.
          * This is because we use KERNEL_LMA as the entry point instead of _start

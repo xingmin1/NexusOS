@@ -5,7 +5,7 @@ use crate::{
     commands::util::bin_file_name,
     util::{get_kernel_crate, get_target_directory},
 };
-use std::process::Command;
+use std::{env, process::Command};
 
 pub fn execute_debug_command(_profile: &str, args: &DebugArgs) {
     let remote = &args.remote;
@@ -16,7 +16,8 @@ pub fn execute_debug_command(_profile: &str, args: &DebugArgs) {
         .join(bin_file_name());
     println!("Debugging {}", file_path.display());
 
-    let mut gdb = Command::new("gdb");
+    let gdb_bin = env::var("GDB").unwrap_or_else(|_| "gdb".to_string());
+    let mut gdb = Command::new(gdb_bin);
     gdb.args([
         format!("{}", file_path.display()).as_str(),
         "-ex",

@@ -281,8 +281,8 @@ fn handle_user_page_fault(f: &mut TrapFrame, e: Exception, page_fault_addr: usiz
     // 我们仍需要正确处理它
 
     let info = CpuExceptionInfo {
-        stval: page_fault_addr,
-        code: e,
+        page_fault_addr: page_fault_addr,
+        code: e.into(),
     };
 
     log::debug!(

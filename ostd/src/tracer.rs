@@ -351,13 +351,13 @@ fn parse_log_level(level_str: &str) -> LevelFilter {
 /// 完全初始化之后调用。`PER_CPU_INDENTATION` 依赖于 CPU 本地存储的正确设置。
 pub fn init_tracing() {
     let kcmdline = &boot_info().kernel_cmdline;
+    crate::prelude::println!("boot_info = {:?}", boot_info());
+    let log_level_str = kcmdline
+        .split_whitespace()
+        .find_map(|arg| arg.strip_prefix("ostd.log_level="))
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| option_env!("LOG_LEVEL").unwrap_or("off"));
 
-    let value = kcmdline
-        .split(' ')
-        .find(|arg| arg.starts_with("ostd.log_level="))
-        .map(|arg| arg.split('=').next_back().unwrap_or_default());
-
-    let log_level_str = value.unwrap_or("off");
     let max_level_filter = parse_log_level(log_level_str);
 
     let subscriber = KernelTracer::new(max_level_filter);

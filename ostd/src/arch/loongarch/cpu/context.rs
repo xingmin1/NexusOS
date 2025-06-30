@@ -47,7 +47,7 @@ impl FpuState {
 }
 
 /// Cpu context, including both general-purpose registers and FPU state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct UserContext {
     user_context: RawUserContext,
@@ -60,8 +60,8 @@ pub struct UserContext {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct CpuExceptionInfo {
-    /// The type of the exception.
-    pub code: Exception,
+    /// The generic CPU exception code.
+    pub code: crate::cpu::CpuException,
     /// The virtual address associated with the exception.
     pub page_fault_addr: usize,
     /// The error code associated with the exception.
@@ -88,7 +88,7 @@ impl Default for UserContext {
 impl Default for CpuExceptionInfo {
     fn default() -> Self {
         CpuExceptionInfo {
-            code: Exception::Breakpoint,
+            code: crate::cpu::CpuException::Breakpoint,
             page_fault_addr: 0,
             error_code: 0,
         }
@@ -97,7 +97,7 @@ impl Default for CpuExceptionInfo {
 
 impl CpuExceptionInfo {
     /// Get corresponding CPU exception
-    pub fn cpu_exception(&self) -> CpuException {
+    pub fn cpu_exception(&self) -> crate::cpu::CpuException {
         self.code
     }
 }
@@ -145,7 +145,7 @@ impl UserContext {
 }
 
 impl UserContextApiInternal for UserContext {
-    fn execute<F>(&mut self, mut has_kernel_event: F) -> ReturnReason
+    async fn execute<F>(&mut self, mut has_kernel_event: F) -> ReturnReason
     where
         F: FnMut() -> bool,
     {
@@ -161,7 +161,7 @@ impl UserContextApiInternal for UserContext {
                     let badv = self.user_context.badv;
                     log::trace!("Exception, cause: {e:?}, badv: {badv:#x?}");
                     self.cpu_exception_info = CpuExceptionInfo {
-                        code: e,
+                        code: e.into(),
                         page_fault_addr: badv,
                         error_code: 0,
                     };
@@ -212,6 +212,22 @@ impl UserContextApi for UserContext {
 
     fn set_stack_pointer(&mut self, sp: usize) {
         self.user_context.set_sp(sp);
+    }
+    
+    /// Gets the syscall number
+    fn syscall_number(&self) -> usize {
+        self.user_context.general.a7
+    }
+
+    /// Sets the syscall return value
+    fn set_syscall_return_value(&mut self, ret: usize) {
+        self.user_context.general.a0 = ret;
+    }
+
+    /// Gets the syscall arguments
+    /// [TODO]: 改为7个？
+    fn syscall_arguments(&self) -> [usize; 6] {
+        [self.user_context.general.a0, self.user_context.general.a1, self.user_context.general.a2, self.user_context.general.a3, self.user_context.general.a4, self.user_context.general.a5]
     }
 }
 
@@ -268,6 +284,3 @@ cpu_context_impl_getter_setter!(
     [s7, set_s7],
     [s8, set_s8]
 );
-
-/// CPU exception.
-pub type CpuException = Exception;

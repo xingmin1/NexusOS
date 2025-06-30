@@ -47,6 +47,7 @@ bitflags::bitflags! {
         const GLOBAL_COMMON = 1 << 6;
         const PHYSICAL = 1 << 7;
         const WRITABLE = 1 << 8;
+        const COW = 1 << 9;
 
         // this bit only applies to huge pages, for common pages, use GLOBAL_HUGE flag
         const GLOBAL_HUGE = 1 << 12;
@@ -128,7 +129,7 @@ impl PodOnce for PageTableEntry {}
 
 impl PageTableEntry {
     const PHYS_ADDR_MASK: usize = 0x0000_ffff_ffff_f000;
-    const FLAGS_MASK: usize = 0xe400_0000_0000_01ff;
+    const FLAGS_MASK: usize = 0xe600_0000_0000_01ff;
 
     fn new_paddr(paddr: Paddr) -> Self {
         Self(paddr & Self::PHYS_ADDR_MASK)
@@ -173,6 +174,7 @@ impl PageTableEntryTrait for PageTableEntry {
             | (parse_flags!(self.0, PageTableFlags::WRITABLE, PageFlags::W))
             | (parse_flags!(!self.0, PageTableFlags::NO_EXECUTE, PageFlags::X))
             | (parse_flags!(self.0, PageTableFlags::DIRTY, PageFlags::DIRTY))
+            | (parse_flags!(self.0, PageTableFlags::COW, PageFlags::COW))
             | (parse_flags!(self.0, PageTableFlags::RSV1, PageFlags::AVAIL1))
             | (parse_flags!(self.0, PageTableFlags::RSV2, PageFlags::AVAIL2))
             | PageFlags::ACCESSED.bits() as usize;
@@ -222,6 +224,7 @@ impl PageTableEntryTrait for PageTableEntry {
             | parse_flags!(!prop.flags.bits(), PageFlags::X, PageTableFlags::NO_EXECUTE)
             | parse_flags!(prop.flags.bits(), PageFlags::AVAIL1, PageTableFlags::RSV1)
             | parse_flags!(prop.flags.bits(), PageFlags::AVAIL2, PageTableFlags::RSV2)
+            | parse_flags!(prop.flags.bits(), PageFlags::COW, PageTableFlags::COW)
             | parse_flags!(
                 prop.priv_flags.bits(),
                 PrivFlags::USER,

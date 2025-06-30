@@ -27,7 +27,7 @@ pub fn register_console_input_callback(_f: &'static InputCallback) {
 
 pub(crate) fn callback_init() {}
 
-struct Stdout;
+pub(crate) struct Stdout;
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {

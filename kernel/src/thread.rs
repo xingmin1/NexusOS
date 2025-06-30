@@ -262,7 +262,7 @@ pub fn task_future(mut thread_state: ThreadState) -> impl Future<Output = ()> + 
                         }
                         Err(e) => {
                             error!("系统调用失败: {:?}", e);
-                            let ret = e.downcast_ref::<Error>().map(|e| e.error() as _).unwrap_or(-1);
+                            let ret = e.downcast_ref::<Error>().map(|e| -(e.error() as isize)).unwrap_or(-1);
                             user_context.set_syscall_return_value(ret as _);
                         }
                     }

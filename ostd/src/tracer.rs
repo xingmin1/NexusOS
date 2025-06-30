@@ -337,10 +337,10 @@ fn parse_log_level(level_str: &str) -> LevelFilter {
         "off" => LevelFilter::OFF,
         unknown => {
             println!(
-                "[TRACING] Unknown log level string: '{}'. Defaulting to INFO.",
+                "[TRACING] Unknown log level string: '{}'. Defaulting to OFF.",
                 unknown
             );
-            LevelFilter::INFO // 默认级别
+            LevelFilter::OFF // 默认级别
         }
     }
 }
@@ -357,7 +357,7 @@ pub fn init_tracing() {
         .find(|arg| arg.starts_with("ostd.log_level="))
         .map(|arg| arg.split('=').next_back().unwrap_or_default());
 
-    let log_level_str = value.unwrap_or("error");
+    let log_level_str = value.unwrap_or("off");
     let max_level_filter = parse_log_level(log_level_str);
 
     let subscriber = KernelTracer::new(max_level_filter);

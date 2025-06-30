@@ -39,7 +39,7 @@ pub async fn do_openat(
         .change_context_lazy(|| Error::with_message(Errno::EINVAL, "invalid open flags"))?;
 
     let raw = copy_cstr_from_user(&state.process_vm, path_ptr)?;
-    // 绝对路径直接返回
+
     let (vnode, path, dir) = if raw.starts_with('/') {
         let mut path = PathBuf::new(&raw)?;
         (get_path_resolver().resolve(&mut path).await, Some(path), None)
@@ -215,15 +215,17 @@ pub async fn do_unlinkat(
     cx: &mut UserContext,
 ) -> Result<ControlFlow<i32, Option<isize>>> {
     let [dirfd, path_ptr, _flags, ..] = cx.syscall_arguments();
-    let fd_table = &state.fd_table;
-    let entry = fd_table.get(dirfd as u32).await?;
-    let dir = entry
-        .obj
-        .as_dir()
-        .ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?
-        .vnode();
-    let name = copy_cstr_from_user(&state.process_vm, path_ptr)?;
-    dir.unlink(&name).await?;
+
+    let raw = copy_cstr_from_user(&state.process_vm, path_ptr)?;
+    let dir = if dirfd == AT_FDCWD as _ || raw.starts_with("./") || raw == "." {
+        let mut path = state.cwd.clone();
+        get_path_resolver().resolve(&mut path).await?.to_dir().ok_or_else(|| errno_with_message(Errno::ENOTDIR, "vnode not a directory"))?
+    } else {
+        let entry = state.fd_table.get(dirfd as u32).await?;
+        entry.obj.as_dir().ok_or_else(|| errno_with_message(Errno::ENOTDIR, "dirfd not a directory"))?.vnode()
+    };
+
+    dir.unlink(raw.as_str()).await?;
     Ok(ControlFlow::Continue(Some(0)))
 }
 
@@ -331,41 +333,42 @@ pub async fn do_fstat(state: &ThreadState, cx: &mut UserContext) -> Result<Contr
         st_dev: u64,
         st_ino: u64,
         st_mode: u32,
-        // __pad1: u32,
-        st_nlink: u64,
+        st_nlink: u32,
         st_uid: u32,
         st_gid: u32,
         st_rdev: u64,
-        // __pad2: u64,
+        __pad: u64,
         st_size: i64,
-        st_blksize: i32,
-        __pad3: i32,
-        st_blocks: i64,
-        times: [i64; 6], // atime/mtime/ctime sec+nsec
+        st_blksize: u32,
+        __pad2: i32,
+        st_blocks: u64,
+        st_atime_sec: i64,
+        st_atime_nsec: i64,
+        st_mtime_sec: i64,
+        st_mtime_nsec: i64,
+        st_ctime_sec: i64,
+        st_ctime_nsec: i64,
         __unused: [u32; 2],
     }
     let ks = KStat {
         st_dev: meta.fs_id as _,
         st_ino: meta.vnode_id,
         st_mode: meta.permissions.bits() as _,
-        // __pad1: 0,
-        st_nlink: meta.nlinks,
+        st_nlink: meta.nlinks as u32,
         st_uid: meta.uid,
         st_gid: meta.gid,
         st_rdev: meta.rdev.unwrap_or(0),
-        // __pad2: 0,
+        __pad: 0,
         st_size: meta.size as _,
         st_blksize: 4096,
-        __pad3: 0,
+        __pad2: 0,
         st_blocks: ((meta.size + 511) / 512) as _,
-        times: [
-            meta.timestamps.accessed.as_u64() as _,
-            0,
-            meta.timestamps.modified.as_u64() as _,
-            0,
-            meta.timestamps.changed.as_u64() as _,
-            0,
-        ],
+        st_atime_sec: meta.timestamps.accessed.as_u64() as _,
+        st_atime_nsec: 0,
+        st_mtime_sec: meta.timestamps.modified.as_u64() as _,
+        st_mtime_nsec: 0,
+        st_ctime_sec: meta.timestamps.changed.as_u64() as _,
+        st_ctime_nsec: 0,
         __unused: [0; 2],
     };
     // ostd::prelude::println!("ks: {:?}", ks);

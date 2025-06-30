@@ -14,7 +14,7 @@ https://asterinas.github.io/book/kernel/the-framekernel-architecture.html
 
 - **Rust 全栈实现，分区管理安全性**：  
   - **OS Framework（操作系统框架）**  
-    - 体量小，只允许使用 *unsafe Rust* 处理极少量底层代码。  
+    - 体量小，允许使用 *unsafe Rust* 处理极少量底层代码。  
     - 其职责是把不安全代码封装为一组 *安全 API*，对内核内存安全负责。  
   - **OS Services（操作系统服务）**  
     - 体量大（系统调用、文件系统、设备驱动等均在此实现），只能用 *safe Rust* 编写。  

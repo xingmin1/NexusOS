@@ -1,0 +1,221 @@
+---
+title: "NexusOS"
+author: "张家文"
+# format: revealjs
+format: pptx
+---
+
+# NexusOS
+
+基于 Rust 的多核、异步、**框内核 (Framekernel)** 架构的操作系统。
+
+---
+
+## 架构：框内核 (Framekernel) - 核心思想
+
+> 融合"微内核的安全性"与"单体内核的性能"的新型操作系统架构。
+
+- **单地址空间**: 内核态所有组件共享同一地址空间，通过函数调用高效通信。
+
+---
+
+- **Rust 全栈实现，分区保证安全**:
+  - **OS Framework (框架)**: 极少量 `unsafe` 代码，封装硬件操作为安全 API。
+  - **OS Services (服务)**: 只能用 `safe Rust` 编写，实现绝大部分内核功能。
+- **最小化可信基 (TCB)**: 系统的内存安全仅依赖于体量很小的 OS Framework。
+
+---
+
+## 架构：框内核的设计要求
+
+- **Soundness (健全性)**: 框架提供的安全 API 应保证使用者无法触发未定义行为。
+- **Expressiveness (表达力)**: API 需足够强大，使开发者能在 `safe Rust` 中实现绝大多数 OS 功能。
+- **Minimalism (极简性)**: 框架体量越小越好，功能尽可能外置。
+- **Efficiency (高效性)**: API 应为零开销或仅引入极小的开销。
+
+---
+
+## 异步与同步的区别
+
+内核异步化的关键点之一是内核控制流的隔离与切换
+
+---
+
+### 内核控制流的隔离
+
+同步时，内核控制流是通过多个内核栈以及存储的寄存器值来隔离的。
+
+异步时，内核控制流通过future自动生成的状态机来隔离。
+
+--- 
+
+### 内核控制流的切换
+
+同步时，内核控制流通过切换内核栈和寄存器的值(即`context_switch`函数)来切换。
+
+异步时，内核控制流通过切换状态机来切换。或者是通过`future::poll`函数来切换。
+
+---
+
+### 对于实现的影响
+
+同步时，
+1. 内核任务需要分配独立的内核栈，
+2. 并且需要保存和恢复寄存器的值，即需要task_context字段来保存和恢复寄存器的值
+
+---
+
+异步时，
+1. 内核任务则不需要独立的内核栈，
+2. 无需保存和恢复寄存器，不需要task_context字段（对于内核线程与用户线程的切换来说，相应的寄存器数据保存到每个cpu都有的内核栈中即可，不需要单独用task_context字段来保存）
+
+3. 没有显式的任务切换（即没有显式的context_switch函数，而是可能在某一个 await 点切换），且此时一个内核任务对应一个future状态机，所以可以把运行的任务存到相应的future状态机中（通过将要运行的任务作为async 函数的参数或 async 闭包的捕获变量，然后把spawn此future）。
+
+## 进程模型：核心理念 - 异步与解耦
+
+- **解耦**: **可调度实体 (Task)** 与 **进程语义 (ThreadGroup)** 分离。
+- **异步化**:
+  - 内核控制流由 `Future` 状态机隔离与切换。
+  - 抛弃了传统的独立内核栈与显式上下文切换 (`context_switch`)。
+
+---
+
+## 进程模型：核心理念 - 状态隔离
+
+- **信息与状态分离**:
+  - **信息 (ThreadSharedInfo)**: 对外共享，可被其他任务观测。
+  - **状态 (ThreadState)**: 对内私有，仅任务自身访问。
+
+---
+
+## 进程模型：关键数据结构
+
+| 结构 | 作用 |
+|---|---|
+| `Task` | 纯调度实体，内核异步运行的最小单元。 |
+| `ThreadGroup` | 用户态所见的"进程"，管理一组 Task，共享资源。 |
+| `ThreadState` | **系统调用的"工作集"**，聚合了任务运行所需的所有资源。 |
+
+---
+
+| `ThreadSharedInfo` | 记录 TID、亲缘关系、生命周期等可被其他线程观测的**共享状态**。|
+| `Lifecycle` | 原子状态机，管理线程生命周期（如 Running, Zombie）与退出等待。 |
+
+---
+
+## VFS 设计：整体架构
+
+- **目标**: 纯异步、高性能、易扩展的虚拟文件系统。
+- **特点**:
+  - **全异步接口**: 所有文件操作均返回 `Future`。
+  - **静态分发**: 避免 `dyn Trait` 开销，使用 `enum` 在编译期确定调用路径。
+  - **分层设计**: 系统调用适配层、VFS 核心层、具体文件系统实现层。
+
+---
+
+```{mermaid}
+graph TD
+    subgraph "用户态"
+        A[Syscalls: open, read, write]
+    end
+    
+    subgraph "内核 VFS 层"
+        B[Syscall Adapter]
+        C[VfsManager]
+        D[PathResolver]
+        E["Cache (Vnode/Dentry)"]
+        F[Static Dispatch Layer]
+    end
+
+    subgraph "文件系统实现"
+        G["impls/{ext4, dev, ...}"]
+    end
+
+    A --> B;
+    B --> C;
+    C --> D & E & F;
+    F --> G;
+```
+
+---
+
+## 内存管理：基于 Asterinas
+
+- **模型来源**: 完全沿用 [Asterinas](https://github.com/asterinas/asterinas) 的安全内存模型。
+- **设计目标**: 在单地址空间内实现内核特权分离，提供强大的内存安全保障。
+- **核心组件**:
+  - **物理内存管理**: `buddy_system_allocator` + `Frame` 抽象。
+  - **元数据系统**: `MetaSlot` 将物理帧与元数据 O(1) 映射，支持 RTTI。
+  - **虚拟内存**: `Vmar` (虚拟内存区域) 与 `VmMapping` 精细化管理地址空间。
+
+---
+
+## 内存管理：关键抽象
+
+```{mermaid}
+classDiagram
+    class ProcessVm {
+        -root_vmar: Vmar
+    }
+    class Vmar {
+        -vm_mappings: IntervalSet~VmMapping~
+        -vm_space: Arc~VmSpace~
+    }
+    class VmMapping {
+        -vmo: Option~MappedVmo~
+        -perms: VmPerms
+    }
+    class MappedVmo {
+        -vmo: Vmo
+    }
+    class VmSpace {
+        -pt: PageTable
+    }
+    class Vmo {
+        -pager: Option~Pager~
+        -pages: Pages
+    }
+
+    ProcessVm --> Vmar : "1..1 (root)"
+    Vmar o-- VmMapping : "0..*"
+    Vmar --> VmSpace : "1..1"
+    VmMapping o-- MappedVmo : "0..1"
+    MappedVmo o-- Vmo : "1..1"
+    VmSpace o-- PageTable : "1..1"
+    Vmo o-- Pages : "1..1"
+    Vmo o-- Pager : "0..1"
+```
+
+---
+
+## 核心特性
+
+- **SMP 与异步化改造**:
+  - 完整的 RISC-V 多核启动流程 (BSP+AP)。
+  - 引入 `maitake` 异步调度器，内核由 `Future` 驱动。
+  - 实现了高效、类型安全的核间中断 (IPI) 机制。
+
+- **分层错误处理**:
+  - 基于 `error-stack` 构建带丰富上下文的内部错误报告。
+  - 在 VFS 等模块边界，将内部错误转换为统一的 `Errno`。
+  - 轻量化设计，对正常执行路径性能影响极小。
+
+---
+
+## 挑战与对策
+
+- **地址混淆**: AP 启动时，误用虚拟地址而非物理地址。
+  - **对策**: 严格区分地址空间，向固件传递物理地址。
+
+- **初始化依赖**: `timer` 初始化依赖尚未就绪的 `smp` IPI。
+  - **对策**: 调整模块加载顺序，显式化依赖。
+
+- **获取当前任务**: 异步模型下，无法用全局变量追踪 `current_task`。
+  - **对策**: 扩展调度器 `Task` 元数据，从中安全获取。
+
+---
+
+# Q & A
+
+Thanks!
+

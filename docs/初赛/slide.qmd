@@ -1,8 +1,8 @@
 ---
 title: "NexusOS"
 author: "张家文"
-# format: revealjs
-format: pptx
+format: revealjs
+# format: pptx
 ---
 
 # NexusOS
@@ -71,6 +71,8 @@ format: pptx
 
 3. 没有显式的任务切换（即没有显式的context_switch函数，而是可能在某一个 await 点切换），且此时一个内核任务对应一个future状态机，所以可以把运行的任务存到相应的future状态机中（通过将要运行的任务作为async 函数的参数或 async 闭包的捕获变量，然后把spawn此future）。
 
+---
+
 ## 进程模型：核心理念 - 异步与解耦
 
 - **解耦**: **可调度实体 (Task)** 与 **进程语义 (ThreadGroup)** 分离。
@@ -95,9 +97,6 @@ format: pptx
 | `Task` | 纯调度实体，内核异步运行的最小单元。 |
 | `ThreadGroup` | 用户态所见的"进程"，管理一组 Task，共享资源。 |
 | `ThreadState` | **系统调用的"工作集"**，聚合了任务运行所需的所有资源。 |
-
----
-
 | `ThreadSharedInfo` | 记录 TID、亲缘关系、生命周期等可被其他线程观测的**共享状态**。|
 | `Lifecycle` | 原子状态机，管理线程生命周期（如 Running, Zombie）与退出等待。 |
 

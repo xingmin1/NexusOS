@@ -250,13 +250,16 @@
 <td><code>ThreadState</code></td>
 <td><strong>系统调用的”工作集”</strong>，聚合了任务运行所需的所有资源。</td>
 </tr>
+<tr class="even">
+<td><code>ThreadSharedInfo</code></td>
+<td>记录 TID、亲缘关系、生命周期等可被其他线程观测的<strong>共享状态</strong>。</td>
+</tr>
+<tr class="odd">
+<td><code>Lifecycle</code></td>
+<td>原子状态机，管理线程生命周期（如 Running, Zombie）与退出等待。</td>
+</tr>
 </tbody>
 </table>
-</section>
-<section class="slide level2">
-
-<div class="line-block"><code>ThreadSharedInfo</code> | 记录 TID、亲缘关系、生命周期等可被其他线程观测的<strong>共享状态</strong>。|<br>
-<code>Lifecycle</code> | 原子状态机，管理线程生命周期（如 Running, Zombie）与退出等待。 |</div>
 </section>
 <section id="vfs-设计整体架构" class="slide level2">
 <h2>VFS 设计：整体架构</h2>

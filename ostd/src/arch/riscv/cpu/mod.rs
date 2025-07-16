@@ -132,9 +132,16 @@ impl UserContextApiInternal for UserContext {
     {
         let ret = loop {
             scheduler::might_preempt().await;
+
+            let _irq_guard = crate::trap::disable_local();
             log::info!("run");
+
+            // 进入用户态
             self.user_context.run();
+            
             log::info!("run end");
+            drop(_irq_guard);
+
             match riscv::interrupt::cause::<Interrupt, Exception>() {
                 Trap::Interrupt(interrupt) => {
                     // crate::prelude::println!("0");
@@ -157,8 +164,7 @@ impl UserContextApiInternal for UserContext {
                 break ReturnReason::KernelEvent;
             }
         };
-
-        crate::arch::irq::enable_local();
+        
         ret
     }
 

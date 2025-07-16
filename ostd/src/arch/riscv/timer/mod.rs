@@ -11,12 +11,11 @@ use crate::{
 };
 
 /// The timer frequency (Hz). Here we choose 1000Hz since 1000Hz is easier for unit conversion and
-/// convenient for timer. What's more, the frequency cannot be set too high or too low, 1000Hz is
+/// convenient for timer. What's more, the frequency cannot be set too high or too low, 200Hz is
 /// a modest choice.
 ///
 /// For system performance reasons, this rate cannot be set too high, otherwise most of the time
 /// is spent executing timer code.
-/// 减小timer_freq，以避免中断风暴 (Interrupt Storm)，特别是在用户态下，刚刚进入用户态的那一刻，可能会触发中断风暴。
 pub const TIMER_FREQ: u64 = 200;
 
 // pub(crate) static TIMEBASE_FREQ: AtomicU64 = AtomicU64::new(1);

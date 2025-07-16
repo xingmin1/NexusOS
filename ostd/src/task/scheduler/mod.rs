@@ -433,9 +433,7 @@ where
 {
     let runnable_ptr = Arc::as_ptr(&runnable) as usize;
     let future = async move {
-        crate::arch::irq::enable_local();
-
-        future.await
+       future.await
     };
     spawn(future, Some(runnable_ptr))
 }

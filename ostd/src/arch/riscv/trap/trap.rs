@@ -16,7 +16,7 @@
 
 use core::arch::{asm, global_asm};
 
-use riscv::register::sstatus;
+use riscv::register::sstatus::{self, Sstatus, FS, SPP};
 
 use crate::Pod;
 
@@ -101,9 +101,16 @@ pub struct UserContext {
 
 impl Default for UserContext {
     fn default() -> Self {
+        let mut s = Sstatus::from_bits(sstatus::read().bits());
+
+        s.set_spp(SPP::User);
+        s.set_sie(false);
+        s.set_spie(true);
+        s.set_fs(FS::Dirty);
+
         UserContext {
-            general: GeneralRegs::default(),
-            sstatus: (sstatus::read().bits() | (1 << 5) | (1 << 18) | (1 << 13)) & !(1 << 8),
+            general: Default::default(),
+            sstatus: s.bits(),
             sepc: 0,
         }
     }
@@ -134,11 +141,11 @@ impl UserContext {
     /// println!("back from user: {:#x?}", context);
     /// ```
     pub fn run(&mut self) {
-        // assert_eq!(self.sstatus & (1 << 5), 1 << 5);
-        // assert_eq!(self.sstatus & (1 << 18), 1 << 18);
-        // assert_eq!(self.sstatus & (1 << 13), 1 << 13);
-        // assert_eq!(self.sstatus & (1 << 8), 0);
-        // crate::prelude::println!("run user: {:#x?}", self);
+        let sstatus = Sstatus::from_bits(self.sstatus);
+        assert_eq!(sstatus.spp(), SPP::User);
+        assert_eq!(sstatus.sie(), false);
+        assert_eq!(sstatus.spie(), true);
+        assert_eq!(sstatus.fs(), FS::Dirty);
         unsafe { run_user(self) }
     }
 }

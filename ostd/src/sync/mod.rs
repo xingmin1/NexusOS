@@ -8,6 +8,8 @@ mod guard_rwlock;
 mod guard_spin;
 mod rcu;
 
+pub use ::spin::Mutex as SpinMutex;
+
 pub use maitake::sync::*;
 
 pub(crate) use self::{guard::GuardTransfer, rcu::finish_grace_period};

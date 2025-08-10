@@ -69,6 +69,8 @@ impl<H: Hal, T: Transport> VirtIOBlk<H, T> {
         )?;
         transport.finish_init();
 
+        info!("VirtIOBlk::new: capacity={}", capacity);
+
         Ok(VirtIOBlk {
             transport,
             queue,

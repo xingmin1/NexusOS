@@ -2,7 +2,7 @@
 
 //! I/O memory.
 
-use core::ops::{Deref, Range};
+use core::{ops::{Deref, Range}, ptr::NonNull};
 
 use align_ext::AlignExt;
 use cfg_if::cfg_if;
@@ -140,6 +140,20 @@ impl IoMem {
                 self.limit,
             )
         }
+    }
+}
+
+impl IoMem {
+    /// 返回给定偏移处的原始指针（非空）。
+    ///
+    /// 安全性：
+    /// - 调用方必须确保偏移与类型 `T` 的对齐要求满足。
+    /// - 调用方必须确保 `[offset, offset + size_of::<T>())` 落在已映射范围内。
+    /// - 该指针用于访问 MMIO 寄存器时应遵守相应内存序/副作用约束。
+    pub unsafe fn as_non_null<T>(&self, offset: usize) -> NonNull<T> {
+        assert!(offset < self.limit);
+        let vaddr = (self.kvirt_area.deref().start() + self.offset + offset) as *mut T;
+        NonNull::new_unchecked(vaddr)
     }
 }
 

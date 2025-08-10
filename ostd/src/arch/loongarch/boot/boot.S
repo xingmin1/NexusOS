@@ -157,6 +157,8 @@ tmp_tlb_refill:
 
 .globl boot_stack_bottom
 boot_stack_bottom:
+    /* 内核启动栈必须16字节对齐（满足16字节对齐类型的访问要求） */
+    .balign 16
     .space 0x40000 # 64 KiB
 
 .globl boot_stack_top

@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, sync::Arc};
 use core::sync::atomic::{AtomicU64, Ordering};
 use async_trait::async_trait;
-use ostd::{sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
+use ostd::sync::SpinMutex;
 use virtio_drivers::device::blk::VirtIOBlk;
 use crate::{AsyncBlockDevice, VfsResult};
 
@@ -17,7 +17,7 @@ where
     H: virtio_drivers::Hal + Send + Sync,
     T: virtio_drivers::transport::Transport + Send + Sync,
 {
-    inner: Arc<Mutex<VirtIOBlk<H, T>>>,
+    inner: Arc<SpinMutex<VirtIOBlk<H, T>>>,
     id: u64,
 }
 
@@ -26,7 +26,7 @@ where
     H: virtio_drivers::Hal + Send + Sync,
     T: virtio_drivers::transport::Transport + Send + Sync,
 {
-    pub fn new(inner: Arc<Mutex<VirtIOBlk<H, T>>>) -> Self {
+    pub fn new(inner: Arc<SpinMutex<VirtIOBlk<H, T>>>) -> Self {
         // 简单生成一个设备 id
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
@@ -86,7 +86,7 @@ impl<
     }
 
     fn total_blocks(&self) -> VfsResult<u64> {
-        let sectors = self.inner.lock().block().capacity();
+        let sectors = self.inner.lock().capacity();
         let total = sectors * SECTOR_SIZE as u64 / LOGICAL_BLOCK_SIZE as u64;
         Ok(total)
     }
@@ -94,19 +94,19 @@ impl<
     async fn read_blocks(&self, start_block: u64, buf: &mut [u8]) -> VfsResult<()> {
         // debug!(start = start_block, len = buf.len(), "read_blocks");
         let sector = Self::blk2sec(start_block);
-        self.inner.lock().await.read_blocks(sector, buf).unwrap();
+        self.inner.lock().read_blocks(sector, buf).unwrap();
         Ok(())
     }
 
     async fn write_blocks(&self, start_block: u64, buf: &[u8]) -> VfsResult<()> {
         // debug!(start = start_block, len = buf.len(), "write_blocks");
         let sector = Self::blk2sec(start_block);
-        self.inner.lock().await.write_blocks(sector, buf).unwrap();
+        self.inner.lock().write_blocks(sector, buf).unwrap();
         Ok(())
     }
 
     async fn flush(&self) -> VfsResult<()> {
-        self.inner.lock().await.flush().unwrap();
+        self.inner.lock().flush().unwrap();
         Ok(())
     }
 }

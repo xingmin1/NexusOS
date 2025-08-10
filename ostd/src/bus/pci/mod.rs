@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! PCI bus
+//! PCI bus（历史接口）。
 //!
 //! Users can implement the bus under the `PciDriver` to the PCI bus to register devices,
 //! when the physical device and the driver match successfully, it will be provided through the driver `construct` function
@@ -54,6 +54,7 @@ pub mod bus;
 pub mod capability;
 pub mod cfg_space;
 pub mod common_device;
+pub mod bar_alloc;
 mod device_info;
 
 pub use device_info::{PciDeviceId, PciDeviceLocation};
@@ -65,13 +66,5 @@ use crate::sync::{blocking::Mutex, spin::Spinlock};
 pub static PCI_BUS: Mutex<PciBus, Spinlock> =
     Mutex::new_with_raw_mutex(PciBus::new(), Spinlock::new());
 
-#[allow(dead_code)]
-pub(crate) fn init() {
-    let mut lock = PCI_BUS.lock();
-    for location in PciDeviceLocation::all() {
-        let Some(device) = PciCommonDevice::new(location) else {
-            continue;
-        };
-        lock.register_common_device(device);
-    }
-}
+// 注意：RISC-V/LoongArch 平台的 PCI 设备发现已迁移至 `crate::bus::init::init()`。
+// 这里保留历史初始化函数以避免影响其他平台或开发分支。

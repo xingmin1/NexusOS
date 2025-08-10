@@ -8,13 +8,11 @@ pub mod bus;
 pub mod common_device;
 
 use alloc::vec::Vec;
-use alloc::sync::Arc;
 
 use cfg_if::cfg_if;
 
 use self::bus::MmioBus;
 use crate::{sync::GuardSpinLock, trap::IrqLine};
-use crate::drivers::virtio::block::VirtioBlkDriver;
 
 #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
 use crate::arch::boot::DEVICE_TREE;
@@ -33,31 +31,16 @@ pub static MMIO_BUS: GuardSpinLock<MmioBus> = GuardSpinLock::new(MmioBus::new())
 static IRQS: GuardSpinLock<Vec<IrqLine>> = GuardSpinLock::new(Vec::new());
 
 pub(crate) fn init() {
-    // 注册 VirtIO 相关驱动，需在扫描设备之前完成。
-    MMIO_BUS
-        .lock()
-        .register_driver(Arc::new(VirtioBlkDriver::new()));
-
-    #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))]
-    // SAFETY:
-    // This is safe because we are ensuring that the address range 0xFEB0_0000 to 0xFEB0_4000 is valid before this operation.
-    // The address range is page-aligned and falls within the MMIO range, which is a requirement for the `unprotect_gpa_range` function.
-    // We are also ensuring that we are only unprotecting four pages.
-    // Therefore, we are not causing any undefined behavior or violating any of the requirements of the `unprotect_gpa_range` function.
-    if tdx_is_enabled() {
-        unsafe {
-            tdx_guest::unprotect_gpa_range(0xFEB0_0000, 4).unwrap();
-        }
-    }
-    // FIXME: The address 0xFEB0_0000 is obtained from an instance of microvm, and it may not work in other architecture.
+    // 迁移说明：
+    // - RISC-V / LoongArch 的 MMIO 设备扫描已迁移至 `crate::bus::init::init()`。
+    // - 这里保留 x86_64 环境下的历史探测逻辑，避免破坏原有平台；当前项目不再调用。
     #[cfg(target_arch = "x86_64")]
-    iter_range(0xFEB0_0000..0xFEB0_4000);
-
-    #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
     {
-        tracing::info!("Initializing MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
-        iter_fdt_nodes();
-        tracing::info!("Initialized MMIO for BSP hart {}", crate::arch::boot::bsp_hart_id());
+        #[cfg(all(feature = "cvm_guest"))]
+        if tdx_is_enabled() {
+            unsafe { tdx_guest::unprotect_gpa_range(0xFEB0_0000, 4).unwrap(); }
+        }
+        iter_range(0xFEB0_0000..0xFEB0_4000);
     }
 }
 

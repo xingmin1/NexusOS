@@ -2,7 +2,7 @@
 
 use alloc::sync::Arc;
 use another_ext4::{Block, BlockDevice};
-use ostd::{drivers::virtio::block::get_block_device, sync::Mutex, task::scheduler::blocking_future::BlockingFuture};
+use ostd::{drivers::virtio::block::first_block_device, sync::SpinMutex, task::scheduler::blocking_future::BlockingFuture};
 use tracing::info;
 use crate::impls::ext4_fs::filesystem::Ext4Fs;
 use virtio_drivers::device::blk::VirtIOBlk;
@@ -71,8 +71,7 @@ impl FileSystemProvider for Ext4Provider {
         let blk: Arc<dyn BlockDevice> = if let Some(dev) = source_device {
             Arc::new(Adapt(dev))
         } else {
-            let vblk: Arc<Mutex<VirtIOBlk<_, _>>> = get_block_device("block_device")
-                .await
+            let vblk: Arc<SpinMutex<VirtIOBlk<_, _>>> = first_block_device()
                 .expect("No virtio block!");
             Arc::new(VirtioBlockDevice::new(vblk))
         };

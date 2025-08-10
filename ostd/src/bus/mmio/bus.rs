@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! MMIO bus.
+//! MMIO bus（历史驱动探测接口，已逐步被统一的 `DEVICE_MANAGER` 取代）。
 
 #![expect(unused_variables)]
 

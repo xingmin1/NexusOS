@@ -129,7 +129,7 @@ impl PodOnce for PageTableEntry {}
 
 impl PageTableEntry {
     const PHYS_ADDR_MASK: usize = 0x0000_ffff_ffff_f000;
-    const FLAGS_MASK: usize = 0xe600_0000_0000_01ff;
+    const FLAGS_MASK: usize = 0xe600_0000_0000_0fff;
 
     fn new_paddr(paddr: Paddr) -> Self {
         Self(paddr & Self::PHYS_ADDR_MASK)
@@ -210,11 +210,11 @@ impl PageTableEntryTrait for PageTableEntry {
     }
 
     fn set_prop(&mut self, prop: PageProperty) {
-        if !self.is_present() {
-            // According to the interface of `PageTableEntryTrait`,
-            // setting the property of a non-present entry is a no-op.
-            return;
-        }
+        // if !self.is_present() {
+        //     // According to the interface of `PageTableEntryTrait`,
+        //     // setting the property of a non-present entry is a no-op.
+        //     return;
+        // }
 
         let mut flags = PageTableFlags::VALID.bits()
             | PageTableFlags::PHYSICAL.bits()

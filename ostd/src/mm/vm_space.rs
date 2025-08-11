@@ -22,7 +22,7 @@ use crate::{
     mm::{
         io::Fallible,
         kspace::KERNEL_PAGE_TABLE,
-        page_table::{self, PageTable, PageTableItem, UserMode},
+        page_table::{self, debug::dump_page_table, PageTable, PageTableItem, UserMode},
         tlb::{TlbFlushOp, TlbFlusher, FLUSH_ALL_RANGE_THRESHOLD},
         PageProperty, UFrame, VmReader, VmWriter, MAX_USERSPACE_VADDR,
     },
@@ -141,6 +141,17 @@ impl VmSpace {
         if last_ptr == Arc::as_ptr(self) {
             return;
         }
+
+        unsafe {
+            let root = self.pt.root_paddr();
+            tracing::info!("root: {:#x}", root);
+            tracing::info!("MAX_USERSPACE_VADDR: {:#x}", crate::mm::MAX_USERSPACE_VADDR);
+            tracing::info!("-------------USERSPACE-------------------");
+            dump_page_table::<PageTableEntry, PagingConsts, _>(root, 0..crate::mm::MAX_USERSPACE_VADDR);
+            tracing::info!("-------------KERNEL-------------------");
+            dump_page_table::<PageTableEntry, PagingConsts, _>(root, crate::mm::KERNEL_VADDR_RANGE);
+        }
+        tracing::info!("activate");
 
         // Ensure no mutable cursors (which holds read locks) are alive before
         // we add the CPU to the CPU set.

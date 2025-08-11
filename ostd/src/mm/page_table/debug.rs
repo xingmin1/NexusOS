@@ -30,11 +30,9 @@ pub unsafe fn dump_page_table<
     E: PageTableEntryTrait,
     C: PagingConstsTrait,
     R: core::ops::RangeBounds<Vaddr>,
-    W: Write,
 >(
     root_paddr: Paddr,
     range: R,
-    out: &mut W,
 ) {
     // 转成绝对起止；闭区间左闭右开
     let start = match range.start_bound() {
@@ -50,14 +48,13 @@ pub unsafe fn dump_page_table<
     early_print!("[dump_page_table] start={:#x}, end={:#x}, root_paddr={:#x}\n", start, end, root_paddr);
 
     // 借鉴 `page_walk`，但遍历整张表而非单点查询
-    unsafe fn dfs<E: PageTableEntryTrait, C: PagingConstsTrait, W: Write>(
+    unsafe fn dfs<E: PageTableEntryTrait, C: PagingConstsTrait>(
         pt_pa: Paddr,
         level: PagingLevel,
         va_base: Vaddr,
         start: Vaddr,
         end: Vaddr,
         indent: usize,
-        out: &mut W,
     ) {
         let pt_va = paddr_to_vaddr(pt_pa) as *const E;
         let stride = page_size::<C>(level);
@@ -66,19 +63,26 @@ pub unsafe fn dump_page_table<
         for idx in 0..entries {
             let mut child_va_base = va_base + idx * stride;
             if level == C::NR_LEVELS {
-                // va_base is initially 0, so for canonical address spaces, we need to sign-extend
-                // the address if it's in the upper half.
-                // We assume 12 bits for page offset and 9 bits per level.
-                const PAGE_BITS: u32 = 12;
-                let va_bits = PAGE_BITS + 9 * C::NR_LEVELS as u32;
-                if va_bits < 64 {
-                    let sign_bit = 1 << (va_bits - 1);
-                    if (child_va_base & sign_bit) != 0 {
-                        child_va_base |= !((1_usize << va_bits) - 1);
+                // 对齐不同架构的“规范地址”规则：
+                // - x86_64 / riscv64：需要对高半区做符号扩展；
+                // - loongarch64：低半区不应做符号扩展（按原始 48bit 处理）。
+                #[cfg(not(target_arch = "loongarch64"))]
+                {
+                    // va_base is initially 0, so for canonical address spaces, we need to sign-extend
+                    // the address if it's in the upper half.
+                    // We assume 12 bits for page offset and 9 bits per level.
+                    const PAGE_BITS: u32 = 12;
+                    let va_bits = PAGE_BITS + 9 * C::NR_LEVELS as u32;
+                    if va_bits < 64 {
+                        let sign_bit = 1 << (va_bits - 1);
+                        if (child_va_base & sign_bit) != 0 {
+                            tracing::info!("sign_bit: {:#x}", sign_bit);
+                            child_va_base |= !((1_usize << va_bits) - 1);
+                        }
                     }
                 }
             }
-
+            // crate::prelude::println!("child_va_base: {:#x}", child_va_base);
             // 与关注区间无交集则跳过，避免无意义的输出
             if child_va_base >= end || child_va_base.checked_add(stride).unwrap_or(usize::MAX) <= start {
                 continue;
@@ -87,12 +91,11 @@ pub unsafe fn dump_page_table<
             let pte = pt_va.add(idx).read();
 
             if !pte.is_present() {
-                continue;
+                // continue;
             }
 
             // 基础行：层次、索引、VA 片段、目标 PA、属性
-            let _ = writeln!(
-                out,
+            let _ = crate::prelude::println!(
                 "{:indent$}L{}[{:03}] VA={:#016x} → PA={:#016x} {:?}",
                 "",
                 level,
@@ -105,18 +108,17 @@ pub unsafe fn dump_page_table<
 
             // 非叶子则递归
             if !pte.is_last(level) {
-                dfs::<E, C, W>(
+                dfs::<E, C>(
                     pte.paddr(),
                     level - 1,
                     child_va_base,
                     start,
                     end,
                     indent + 2,
-                    out,
                 );
             }
         }
     }
 
-    dfs::<E, C, W>(root_paddr, C::NR_LEVELS, 0, start, end, 0, out);
+    dfs::<E, C>(root_paddr, C::NR_LEVELS, 0, start, end, 0);
 }

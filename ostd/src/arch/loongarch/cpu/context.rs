@@ -150,9 +150,21 @@ impl UserContextApiInternal for UserContext {
         F: FnMut() -> bool,
     {
         let ret = loop {
+            crate::task::scheduler::might_preempt().await;
+
+            let _irq_guard = crate::trap::disable_local();
+            log::info!("run");
+
+            // 进入用户态
             self.user_context.run();
+            
+            log::info!("run end");
+            drop(_irq_guard);
             match loongArch64::register::estat::read().cause() {
-                Trap::Interrupt(_) => todo!(),
+                Trap::Interrupt(interrupt) => {
+                    use crate::arch::trap::handle_interrupt;
+                    handle_interrupt(interrupt, &mut self.as_trap_frame());
+                }
                 Trap::Exception(Exception::Syscall) => {
                     self.user_context.era += 4;
                     break ReturnReason::UserSyscall;
@@ -191,11 +203,17 @@ impl UserContextApiInternal for UserContext {
 
 impl UserContextApi for UserContext {
     fn trap_number(&self) -> usize {
-        todo!()
+        // 返回异常码或中断号
+        match self.trap {
+            Trap::Exception(e) => e as usize,
+            Trap::Interrupt(i) => i as usize | 0x8000_0000, // 使用高位区分中断
+            _ => 0,
+        }
     }
 
     fn trap_error_code(&self) -> usize {
-        todo!()
+        // LoongArch 没有像 x86 那样的错误码，返回 0
+        self.cpu_exception_info.error_code
     }
 
     fn instruction_pointer(&self) -> usize {
